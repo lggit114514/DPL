@@ -53,5 +53,6 @@ DPL 是一个基于 .NET 8 和 Avalonia UI 开发的轻量级、跨平台 Minecr
 1. 从 Releases 页面下载最新的 DPL-linux-x64.zip 压缩包并解压
 2. 打开终端 进入解压后的目录
 3. 赋予程序执行权限并启动
+   ```bash
    chmod +x DPL
    ./DPL
