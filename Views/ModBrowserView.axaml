@@ -1,0 +1,148 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DPL.ViewModels"
+             x:Class="DPL.Views.ModBrowserView"
+             x:DataType="vm:ModBrowserViewModel">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="24,14,24,14"
+        IsVisible="{Binding IsActive}">
+
+    <!-- ==================== 标题 ==================== -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+      <StackPanel Spacing="5">
+        <TextBlock Text="Mod下载" Classes="pageTitle" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="{Binding TargetText}" Classes="secondary" FontSize="11.5" TextWrapping="Wrap" />
+        </StackPanel>
+      </StackPanel>
+
+      <StackPanel Grid.Column="1" Spacing="4" HorizontalAlignment="Right">
+        <Button Theme="{StaticResource GhostButtonTheme}" Content="重新探测下载源"
+                Command="{Binding RefreshSourceCommand}" Padding="12,6" FontSize="11" />
+        <TextBlock Text="{Binding SourceStatusText}" Classes="muted" FontSize="10.5"
+                   HorizontalAlignment="Right" />
+        <TextBlock Text="{Binding SyncAtText}" Classes="muted" FontSize="9.5"
+                   HorizontalAlignment="Right" IsVisible="{Binding HasSyncAt}" />
+      </StackPanel>
+    </Grid>
+
+    <!-- ==================== 搜索栏 ==================== -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,12">
+      <TextBox Text="{Binding SearchText, Mode=TwoWay}" Watermark="搜索Mod ；留空显示热门Mod"
+               FontSize="12.5" VerticalAlignment="Center" />
+      <ComboBox Grid.Column="1" ItemsSource="{Binding SourceOptions}"
+                SelectedIndex="{Binding SourceIndex, Mode=TwoWay}"
+                Width="150" Margin="10,0" VerticalAlignment="Center" />
+      <Button Grid.Column="2" Theme="{StaticResource PrimaryButtonTheme}" Content="搜索"
+              Command="{Binding SearchCommand}" IsEnabled="{Binding IsIdle}" Padding="24,8" />
+    </Grid>
+
+    <!-- ==================== 结果 + 版本 ==================== -->
+    <Grid Grid.Row="2" ColumnDefinitions="*,320" ColumnSpacing="12">
+
+      <!-- 结果列表 -->
+      <Border Background="{DynamicResource CardBackgroundBrush}"
+              BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+              CornerRadius="12" Padding="6">
+        <Grid RowDefinitions="Auto,*,Auto,Auto">
+          <TextBlock Grid.Row="0" Text="{Binding ResultsTitle}" Classes="sectionTitle" Margin="10,8,10,6" />
+          <ListBox Grid.Row="1" ItemsSource="{Binding Results}"
+                   SelectedItem="{Binding SelectedResult, Mode=TwoWay}"
+                   ItemContainerTheme="{StaticResource VersionListBoxItemTheme}"
+                   Background="Transparent" BorderThickness="0">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:ModResultViewModel">
+                <Grid ColumnDefinitions="*,Auto" Margin="10,7">
+                  <StackPanel Spacing="3">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
+                      <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="5" Padding="6,1"
+                              VerticalAlignment="Center">
+                        <TextBlock Text="{Binding SourceText}" FontSize="9.5"
+                                   Foreground="{DynamicResource AccentBrush}" />
+                      </Border>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Description}" FontSize="10.5" Classes="secondary"
+                               TextWrapping="Wrap" MaxLines="2" />
+                    <TextBlock Text="{Binding ChosenBecause}" FontSize="9.5" Classes="muted"
+                               TextWrapping="Wrap" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="3" HorizontalAlignment="Right">
+                    <TextBlock Text="{Binding UpdatedText}" FontSize="10" Classes="muted"
+                               HorizontalAlignment="Right" />
+                    <TextBlock Text="{Binding DownloadsText}" FontSize="10" Classes="muted"
+                               HorizontalAlignment="Right" />
+                  </StackPanel>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <!-- 轻量提示（例如 429 限流） -->
+          <TextBlock Grid.Row="2" Text="{Binding PopularNotice}" FontSize="10.5" Classes="muted"
+                     Margin="10,4,10,0" TextWrapping="Wrap"
+                     IsVisible="{Binding HasPopularNotice}" />
+
+          <!-- 加载失败：显示原因 + 重试按钮，不静默失败 -->
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10" Margin="10,6,10,0"
+                      IsVisible="{Binding HasPopularError}">
+            <TextBlock Text="{Binding PopularError}" Classes="error" FontSize="10.5"
+                       TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="560" />
+            <Button Theme="{StaticResource GhostButtonTheme}" Content="重试"
+                    Command="{Binding RetryPopularCommand}" Padding="12,4" FontSize="10.5" />
+          </StackPanel>
+
+          <!-- 热门列表为空 -->
+          <TextBlock Grid.Row="2" Text="{Binding PopularEmptyText}" FontSize="11" Classes="muted"
+                     Margin="10,6,10,0" IsVisible="{Binding ShowPopularEmpty}" />
+
+          <!-- 加载更多 -->
+          <Button Grid.Row="3" Theme="{StaticResource GhostButtonTheme}" Content="加载更多"
+                  Command="{Binding LoadMorePopularCommand}"
+                  IsVisible="{Binding CanLoadMorePopular}"
+                  HorizontalAlignment="Center" Padding="18,6" FontSize="11" Margin="0,8,0,2" />
+        </Grid>
+      </Border>
+
+      <!-- 版本列表 -->
+      <Border Grid.Column="1" Background="{DynamicResource CardBackgroundBrush}"
+              BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+              CornerRadius="12" Padding="12">
+        <Grid RowDefinitions="Auto,*,Auto,Auto">
+          <TextBlock Grid.Row="0" Text="兼容版本" Classes="sectionTitle" Margin="0,0,0,8" />
+
+          <ListBox Grid.Row="1" ItemsSource="{Binding Versions}"
+                   SelectedItem="{Binding SelectedVersion, Mode=TwoWay}"
+                   ItemContainerTheme="{StaticResource VersionListBoxItemTheme}"
+                   Background="Transparent" BorderThickness="0">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:ModVersionViewModel">
+                <StackPanel Spacing="2" Margin="8,6">
+                  <TextBlock Text="{Binding DisplayText}" FontSize="11.5" />
+                  <TextBlock Text="{Binding GameVersionsText}" FontSize="9.5" Classes="muted" />
+                  <TextBlock Text="{Binding DependencyText}" FontSize="9.5" Classes="muted" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <TextBlock Grid.Row="2" Text="{Binding ErrorText}" Classes="error" FontSize="10.5"
+                     TextWrapping="Wrap" Margin="0,6,0,0" IsVisible="{Binding HasError}" />
+
+          <Button Grid.Row="3" Theme="{StaticResource PrimaryButtonTheme}" Content="{Binding DownloadText}"
+                  Command="{Binding DownloadCommand}" IsEnabled="{Binding IsIdle}"
+                  HorizontalAlignment="Stretch" Margin="0,10,0,0" />
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- ==================== 底部进度 ==================== -->
+    <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,12,0,0">
+      <TextBlock Text="进度" Classes="fieldLabel" VerticalAlignment="Center" Margin="0,0,10,0" />
+      <ProgressBar Grid.Column="1" Value="{Binding ProgressPercent}" Maximum="100"
+                   Height="6" VerticalAlignment="Center" />
+      <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="10.5" Classes="secondary"
+                 Margin="10,0,0,0" VerticalAlignment="Center" MaxWidth="420" TextWrapping="Wrap" />
+    </Grid>
+  </Grid>
+</UserControl>

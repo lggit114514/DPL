@@ -1,0 +1,88 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DPL.ViewModels"
+             x:Class="DPL.Views.DownloadView"
+             x:DataType="vm:MainWindowViewModel">
+
+  <Grid RowDefinitions="Auto,Auto,*" Margin="24,14,24,14">
+
+    <!-- ==================== 页面标题 ==================== -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,14">
+      <StackPanel Spacing="5">
+        <TextBlock Text="下载游戏" Classes="pageTitle" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="{Binding OnlineCountText}" Classes="secondary" FontSize="12" />
+          <TextBlock Text="·" Classes="muted" FontSize="12" />
+          <TextBlock Text="点击版本卡片即可选择一起安装 Fabric / Forge 等模组加载器" Classes="muted" FontSize="12" />
+        </StackPanel>
+      </StackPanel>
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+        <Button Theme="{StaticResource GhostButtonTheme}" Content="刷新清单"
+                Command="{Binding RefreshOnlineVersionsCommand}" />
+        <Button Theme="{StaticResource GhostButtonTheme}" Content="返回本地"
+                Command="{Binding ShowLocalPageCommand}" />
+      </StackPanel>
+    </Grid>
+
+    <!-- ==================== 搜索与筛选 ==================== -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,190" Margin="0,0,0,14">
+      <TextBox Text="{Binding SearchText}" Watermark="搜索版本号，例如 1.20 或 1.21.4"
+               VerticalContentAlignment="Center" />
+      <ComboBox Grid.Column="1" ItemsSource="{Binding TypeFilters}"
+                SelectedIndex="{Binding SelectedTypeFilterIndex}"
+                Margin="10,0,0,0" VerticalContentAlignment="Center" />
+    </Grid>
+
+    <!-- ==================== 版本列表 ==================== -->
+    <Grid Grid.Row="2">
+      <ListBox ItemsSource="{Binding FilteredOnlineVersions}"
+               ItemContainerTheme="{StaticResource VersionListBoxItemTheme}"
+               IsVisible="{Binding !IsOnlineListEmpty}"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:VersionItemViewModel">
+            <Grid ColumnDefinitions="*,Auto" Margin="14,11">
+              <!-- 左侧信息区：点击即可进入“选择模组加载器并安装”页面 -->
+              <Button Theme="{StaticResource CardClickButtonTheme}"
+                      Command="{Binding OpenInstallCommand}"
+                      Grid.Column="0"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Left"
+                      ToolTip.Tip="点击选择模组加载器并安装">
+                <Grid ColumnDefinitions="Auto,*">
+                  <Border Grid.Column="0" Classes="versionBadge"
+                          Classes.release="{Binding IsRelease}"
+                          Classes.snapshot="{Binding IsSnapshot}"
+                          Classes.old="{Binding IsOld}"
+                          VerticalAlignment="Center">
+                    <TextBlock Text="{Binding TypeText}" />
+                  </Border>
+
+                  <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="3" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Name}" FontSize="14.5" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding ReleaseTimeText}" FontSize="10.5" Classes="muted" />
+                  </StackPanel>
+                </Grid>
+              </Button>
+
+              <!-- 右侧只保留状态文字：安装 / 启动都从「本地启动」页进行 -->
+              <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="10.5" Classes="accent"
+                         VerticalAlignment="Center" Margin="10,0,0,0"
+                         IsVisible="{Binding HasStatusText}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <!-- 空状态 -->
+      <StackPanel IsVisible="{Binding IsOnlineListEmpty}"
+                  VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10">
+        <TextBlock Text="没有符合条件的版本" FontSize="15" FontWeight="SemiBold"
+                   HorizontalAlignment="Center" />
+        <TextBlock Text="可以尝试清空搜索关键字、切换筛选条件，或点击“刷新清单”重新获取"
+                   Classes="muted" FontSize="11.5" HorizontalAlignment="Center" />
+      </StackPanel>
+    </Grid>
+  </Grid>
+</UserControl>

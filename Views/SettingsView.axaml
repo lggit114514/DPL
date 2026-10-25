@@ -1,0 +1,288 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DPL.ViewModels"
+             xmlns:models="using:DPL.Models"
+             x:Class="DPL.Views.SettingsView"
+             x:DataType="vm:MainWindowViewModel">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="24,14,24,14">
+
+    <!-- ==================== 页面标题 ==================== -->
+    <StackPanel Grid.Row="0" Spacing="5" Margin="0,0,0,16">
+      <TextBlock Text="设置" Classes="pageTitle" />
+      <TextBlock Text="启动器与游戏的运行参数，保存后立即生效"
+                 Classes="muted" FontSize="12" />
+    </StackPanel>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="14" Margin="0,0,4,4">
+
+        <!-- 游戏目录 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="10">
+            <TextBlock Text="游戏目录（.minecraft）" Classes="sectionTitle" />
+            <TextBlock Text="启动器会从该目录读取已安装版本，并在下载时把文件写入该目录"
+                       Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            <TextBox Text="{Binding GameDirectory}" Watermark="例如 .minecraft、minecraft 或自定义游戏目录的完整路径" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Theme="{StaticResource GhostButtonTheme}" Content="选择目录…"
+                      Command="{Binding BrowseGameDirectoryCommand}" />
+              <Button Theme="{StaticResource GhostButtonTheme}" Content="恢复默认"
+                      Command="{Binding UseDefaultGameDirectoryCommand}" />
+              <Button Theme="{StaticResource GhostButtonTheme}" Content="打开目录"
+                      Command="{Binding OpenGameDirectoryCommand}" />
+              <Button Theme="{StaticResource GhostButtonTheme}" Content="重新读取版本"
+                      Command="{Binding RefreshLocalVersionsCommand}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- 版本文件夹 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="10">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="版本文件夹（versions）" Classes="sectionTitle" />
+              <Border Grid.Column="1" Background="{DynamicResource AccentSoftBrush}"
+                      CornerRadius="6" Padding="7,2" VerticalAlignment="Center"
+                      IsVisible="{Binding IsCustomVersionsDirectory}">
+                <TextBlock Text="自定义" FontSize="10" Foreground="{DynamicResource AccentBrush}" />
+              </Border>
+            </Grid>
+            <TextBlock Text="留空则使用游戏目录下的 versions；也可以指向别的文件夹（例如放在其他硬盘），启动器会从该文件夹读取版本并下载到该文件夹"
+                       Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            <TextBox Text="{Binding VersionsDirectory}" Watermark="留空表示使用 游戏目录/versions" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Theme="{StaticResource GhostButtonTheme}" Content="选择文件夹…"
+                      Command="{Binding BrowseVersionsDirectoryCommand}" />
+              <Button Theme="{StaticResource GhostButtonTheme}" Content="恢复默认"
+                      Command="{Binding UseDefaultVersionsDirectoryCommand}" />
+              <Button Theme="{StaticResource GhostButtonTheme}" Content="打开版本文件夹"
+                      Command="{Binding OpenVersionsDirectoryCommand}" />
+            </StackPanel>
+            <TextBlock Text="{Binding VersionsDirectoryText}" FontSize="10.5" Classes="secondary"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <!-- 账号 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="12">
+            <Grid ColumnDefinitions="*,200">
+              <StackPanel Spacing="3" VerticalAlignment="Center">
+                <TextBlock Text="账号" Classes="sectionTitle" />
+                <TextBlock Text="离线账号与微软正版账号可随时切换"
+                           Classes="muted" FontSize="11" TextWrapping="Wrap" />
+              </StackPanel>
+              <ComboBox Grid.Column="1" ItemsSource="{Binding AccountModes}"
+                        SelectedIndex="{Binding AccountModeIndex, Mode=TwoWay}"
+                        VerticalAlignment="Center" />
+            </Grid>
+
+            <!-- ========== 离线账号 ========== -->
+            <StackPanel Spacing="8" IsVisible="{Binding IsOfflineAccountMode}">
+              <TextBlock Text="离线账号名称" Classes="fieldLabel" />
+              <TextBox Text="{Binding PlayerName}" MaxLength="16"
+                       Watermark="玩家名称（建议只使用字母、数字和下划线，最多 16 个字符）" />
+
+              <TextBlock Text="用过的离线名称"
+                         Classes="fieldLabel" Margin="0,4,0,0" />
+              <Grid ColumnDefinitions="*,Auto">
+                <ComboBox ItemsSource="{Binding OfflineNameHistory}"
+                          SelectedItem="{Binding SelectedHistoryName, Mode=TwoWay}"
+                          PlaceholderText="选择用过的离线名称">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                      <TextBlock Text="{Binding}" FontSize="12" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Button Grid.Column="1" Theme="{StaticResource GhostButtonTheme}" Content="清空历史"
+                        Command="{Binding ClearOfflineHistoryCommand}"
+                        Margin="8,0,0,0" Padding="12,6" FontSize="11" />
+              </Grid>
+              <TextBlock Text="离线账号仅能进入单机存档与离线服务器；正版服务器请切换为微软正版登录"
+                         Classes="muted" FontSize="10.5" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- ========== 微软正版账号 ========== -->
+            <StackPanel Spacing="10" IsVisible="{Binding IsMicrosoftAccountMode}">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="已登录的微软账号（选中后启动即使用该账号）"
+                           Classes="fieldLabel" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Theme="{StaticResource GhostButtonTheme}" Content="刷新列表"
+                        Command="{Binding RefreshMicrosoftAccountsCommand}"
+                        Padding="10,4" FontSize="10.5" />
+              </Grid>
+
+              <ListBox ItemsSource="{Binding MicrosoftAccounts}"
+                       SelectedItem="{Binding SelectedMicrosoftAccount, Mode=TwoWay}"
+                       ItemContainerTheme="{StaticResource AccountListBoxItemTheme}"
+                       MinHeight="72" MaxHeight="168">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="models:AccountProfile">
+                    <Grid ColumnDefinitions="*,Auto" Margin="12,9">
+                      <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding DetailText}" FontSize="10" Classes="muted" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Background="{DynamicResource AccentSoftBrush}"
+                              CornerRadius="5" Padding="6,2" VerticalAlignment="Center">
+                        <TextBlock Text="正版" FontSize="9.5"
+                                   Foreground="{DynamicResource AccentBrush}" />
+                      </Border>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+
+              <TextBlock Text="还没有登录过微软账号，点击下面的“登录微软账号”开始"
+                         Classes="muted" FontSize="10.5"
+                         IsVisible="{Binding !HasMicrosoftAccounts}" />
+
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Theme="{StaticResource PrimaryButtonTheme}" Content="登录微软账号"
+                        Command="{Binding LoginMicrosoftCommand}"
+                        IsEnabled="{Binding !IsMicrosoftLoggingIn}" Padding="16,8" FontSize="11.5" />
+                <Button Theme="{StaticResource GhostButtonTheme}" Content="退出登录"
+                        Command="{Binding SignOutMicrosoftCommand}" />
+                <Button Theme="{StaticResource GhostButtonTheme}" Content="账号文件目录"
+                        Command="{Binding OpenAccountsFileFolderCommand}" />
+              </StackPanel>
+
+              <TextBlock Text="{Binding MicrosoftLoginStatus}" FontSize="10.5" Classes="secondary"
+                         TextWrapping="Wrap" />
+              <TextBlock Text="登录状态会保存在本地应用数据目录（microsoft-accounts.json），下次启动可直接选择该账号；Windows 版优先使用内嵌 WebView2，其他平台使用系统浏览器完成登录"
+                         Classes="muted" FontSize="10" TextWrapping="Wrap" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Java 运行时 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="10">
+            <TextBlock Text="Java 运行时" Classes="sectionTitle" />
+            <TextBlock Text="优先使用本机已安装的 Java"
+                       Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            <ComboBox ItemsSource="{Binding JavaCandidates}"
+                      SelectedItem="{Binding SelectedJava}"
+                      PlaceholderText="自动检测">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="models:JavaCandidate">
+                  <TextBlock Text="{Binding DisplayName}" FontSize="11.5"
+                             TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Theme="{StaticResource GhostButtonTheme}" Content="重新检测"
+                      Command="{Binding AutoDetectJavaCommand}" />
+              <Button Theme="{StaticResource GhostButtonTheme}" Content="浏览 Java…"
+                      Command="{Binding BrowseJavaCommand}" />
+            </StackPanel>
+            <TextBlock Text="{Binding JavaPathText}" FontSize="10.5" Classes="secondary"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding JavaDetectedText}" Classes="muted" FontSize="10.5"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <!-- 内存分配 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="内存分配" Classes="sectionTitle" />
+              <TextBlock Grid.Column="1" Text="{Binding MemoryText}" FontSize="12.5"
+                         FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+            </Grid>
+            <TextBlock Text="对应 JVM 参数:-Xmx ；大型整合包建议 6144 MB 以上"
+                       Classes="muted" FontSize="11" />
+            <Slider Minimum="1024" Maximum="16384" TickFrequency="512" IsSnapToTickEnabled="True"
+                    Value="{Binding MaxMemoryMbSlider}" Margin="0,4,0,0" />
+          </StackPanel>
+        </Border>
+
+        <!-- 启动行为 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="10">
+            <TextBlock Text="启动行为" Classes="sectionTitle" />
+            <CheckBox Content="启动前校验并补全游戏文件（推荐：缺失文件与损坏的 Java 运行时都会自动修复）"
+                      IsChecked="{Binding CheckFilesBeforeLaunch}" />
+            <CheckBox Content="版本隔离：若版本文件夹里有 mods / saves，则以该文件夹作为游戏目录（PCL2、HMCL 实例需要）"
+                      IsChecked="{Binding UseVersionIsolation}" />
+            <TextBlock Text="关闭“启动前校验”后，如果官方 Java 运行时已损坏（javaw 无法加载 jvm.dll），启动会直接失败"
+                       Classes="muted" FontSize="10.5" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <!-- 模组下载 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="10">
+            <TextBlock Text="模组下载" Classes="sectionTitle" />
+            <TextBlock Text="搜索同时接入 Modrinth 与 CurseForge；默认「自动择优」，会自动探测可达性并比较更新时间。"
+                       Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Text="CurseForge API Key" Classes="fieldLabel" VerticalAlignment="Center"
+                         Margin="0,0,12,0" />
+              <TextBox Grid.Column="1" Text="{Binding CurseForgeApiKey, Mode=TwoWay}"
+                       Watermark="留空则只使用 Modrinth（也可设置环境变量 NOVALAUNCH_CURSEFORGE_KEY）"
+                       FontSize="11.5" />
+            </Grid>
+            <TextBlock Text="Key 会保存在本地设置文件里，不会写进源码；没有 Key 时自动模式只使用 Modrinth。"
+                       Classes="muted" FontSize="10.5" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <!-- 外观 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="10">
+            <TextBlock Text="外观" Classes="sectionTitle" />
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Text="主题" Classes="fieldLabel" VerticalAlignment="Center"
+                         Margin="0,0,12,0" />
+              <ComboBox Grid.Column="1" ItemsSource="{Binding ThemeOptions}"
+                        SelectedIndex="{Binding SelectedThemeIndex, Mode=TwoWay}" />
+            </Grid>
+            <TextBlock Text="浅蓝 / 浅粉为玻璃主题。"
+                       Classes="muted" FontSize="10.5" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <!-- 关于 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="6">
+            <TextBlock Text="关于" Classes="sectionTitle" />
+            <TextBlock Text="DPL · 一款很带派的Minecraft启动器"
+                       Classes="secondary" FontSize="11.5" TextWrapping="Wrap" />
+            <TextBlock Text="开发者: Deepseek V4.1Flash LG_MC114 Hejuxiao"
+                       Classes="muted" FontSize="11" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- ==================== 底部操作栏 ==================== -->
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
+      <TextBlock Text="修改游戏目录后会自动重新读取本地版本列表"
+                 Classes="muted" FontSize="11" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Theme="{StaticResource PrimaryButtonTheme}" Content="保存设置"
+              Command="{Binding SaveSettingsCommand}" Padding="26,10" />
+    </Grid>
+  </Grid>
+</UserControl>

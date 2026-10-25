@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>NovaLaunch 图标生成器</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 26px;
+    background: radial-gradient(circle at 50% 35%, #16162a 0%, #07070c 72%);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    color: #9aa0b4;
+  }
+  #iconWrap {
+    width: 512px; height: 512px;
+    filter: drop-shadow(0 18px 54px rgba(90,190,80,0.18));
+  }
+  #iconWrap svg { width: 100%; height: 100%; display: block; }
+  .hint { font-size: 13px; letter-spacing: 0.05em; opacity: 0.55; }
+  button {
+    padding: 12px 32px; font-size: 15px; font-weight: 600;
+    color: #eafbe6; cursor: pointer;
+    background: linear-gradient(135deg, #24402a, #16281b);
+    border: 1px solid #3c6a46; border-radius: 10px;
+    transition: all 0.2s;
+  }
+  button:hover {
+    border-color: #7bd45c;
+    box-shadow: 0 0 22px rgba(120,220,90,0.35);
+    transform: translateY(-1px);
+  }
+</style>
+</head>
+<body>
+<div id="iconWrap"></div>
+<div class="hint">NovaLaunch · 512 × 512</div>
+<button id="download">下载 PNG</button>
+
+<script>
+/* ---------- 像素星芒（从方块顶面中心爆发） ---------- */
+function makeRays() {
+  const cx = 256, cy = 184;          // 顶面菱形中心
+  const dirs = [
+    [0,-1],[0.7071,-0.7071],[1,0],[0.7071,0.7071],
+    [0,1],[-0.7071,0.7071],[-1,0],[-0.7071,-0.7071]
+  ];
+  let s = '';
+  for (const [dx, dy] of dirs) {
+    for (let i = 1; i <= 5; i++) {
+      const d = 30 + i * 24;
+      const size = 12 - i * 1.8;
+      const x = cx + dx * d - size / 2;
+      const y = cy + dy * d - size / 2;
+      const op = 0.95 - i * 0.14;
+      s += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${size.toFixed(1)}" height="${size.toFixed(1)}" rx="1" fill="#c9f8ff" opacity="${op.toFixed(2)}"/>`;
+    }
+  }
+  return s;
+}
+
+/* ---------- 顶面草皮像素纹理 ---------- */
+function makeGrassPixels() {
+  const px = [
+    [230,150,14,14,'#5FA843'], [272,158,12,12,'#7BC95A'],
+    [248,188,16,16,'#4E9A36'], [292,178,12,12,'#5FA843'],
+    [218,186,12,12,'#7BC95A'], [262,212,14,14,'#4E9A36'],
+    [300,198,10,10,'#7BC95A'], [240,162,10,10,'#4E9A36'],
+    [282,204,10,10,'#5FA843'], [224,206,10,10,'#5FA843']
+  ];
+  return px.map(([x,y,w,h,c]) =>
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${c}"/>`
+  ).join('');
+}
+
+/* ---------- 散落像素粒子 ---------- */
+const particles = `
+  <rect x="150" y="210" width="8" height="8" rx="1" fill="#c9f8ff" opacity="0.75"/>
+  <rect x="352" y="196" width="6" height="6" rx="1" fill="#7bd45c" opacity="0.7"/>
+  <rect x="368" y="300" width="7" height="7" rx="1" fill="#c9f8ff" opacity="0.55"/>
+  <rect x="138" y="310" width="6" height="6" rx="1" fill="#7bd45c" opacity="0.6"/>
+  <rect x="300" y="420" width="6" height="6" rx="1" fill="#c9f8ff" opacity="0.5"/>
+  <rect x="196" y="424" width="5" height="5" rx="1" fill="#7bd45c" opacity="0.45"/>
+`;
+
+const svgMarkup = `
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="34%" r="80%">
+      <stop offset="0%" stop-color="#1a2230"/>
+      <stop offset="58%" stop-color="#0d1118"/>
+      <stop offset="100%" stop-color="#050608"/>
+    </radialGradient>
+
+    <linearGradient id="topFace" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0%" stop-color="#8FD45C"/>
+      <stop offset="100%" stop-color="#6BB83F"/>
+    </linearGradient>
+    <linearGradient id="leftFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8A6A45"/>
+      <stop offset="100%" stop-color="#6A4E34"/>
+    </linearGradient>
+    <linearGradient id="rightFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5E4630"/>
+      <stop offset="100%" stop-color="#443222"/>
+    </linearGradient>
+
+    <radialGradient id="burstGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c9f8ff" stop-opacity="0.55"/>
+      <stop offset="35%" stop-color="#7bd4ff" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#7bd4ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="groundGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7bd45c" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#7bd45c" stop-opacity="0"/>
+    </radialGradient>
+
+    <clipPath id="topClip">
+      <polygon points="256,118 371,184 256,250 141,184"/>
+    </clipPath>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- 地面光晕 -->
+  <ellipse cx="256" cy="404" rx="168" ry="34" fill="url(#groundGlow)"/>
+
+  <!-- 星芒爆发光晕 -->
+  <circle cx="256" cy="184" r="180" fill="url(#burstGlow)"/>
+
+  <!-- 像素星芒（先画，后方会被立方体遮住） -->
+  ${makeRays()}
+
+  <!-- 等距草方块立方体 -->
+  <polygon points="141,184 141,314 256,380 256,250" fill="url(#leftFace)"/>
+  <polygon points="371,184 371,314 256,380 256,250" fill="url(#rightFace)"/>
+  <polygon points="256,118 371,184 256,250 141,184" fill="url(#topFace)"/>
+
+  <!-- 顶面草皮像素纹理 -->
+  <g clip-path="url(#topClip)">${makeGrassPixels()}</g>
+
+  <!-- 立方体棱线高光 -->
+  <polyline points="141,184 256,250 371,184" fill="none" stroke="#b8ec8a" stroke-width="2" stroke-opacity="0.55"/>
+  <line x1="256" y1="250" x2="256" y2="380" stroke="#2c1f14" stroke-width="2" stroke-opacity="0.5"/>
+  <line x1="141" y1="184" x2="141" y2="314" stroke="#3a2a1a" stroke-width="2" stroke-opacity="0.45"/>
+  <line x1="371" y1="184" x2="371" y2="314" stroke="#2a1e12" stroke-width="2" stroke-opacity="0.5"/>
+  <line x1="141" y1="314" x2="256" y2="380" stroke="#2a1e12" stroke-width="2" stroke-opacity="0.4"/>
+  <line x1="371" y1="314" x2="256" y2="380" stroke="#2a1e12" stroke-width="2" stroke-opacity="0.4"/>
+
+  <!-- 中心亮点 -->
+  <rect x="249" y="177" width="14" height="14" rx="2" fill="#ffffff" opacity="0.95"/>
+  <rect x="244" y="172" width="24" height="24" rx="3" fill="#c9f8ff" opacity="0.28"/>
+
+  <!-- 粒子 -->
+  ${particles}
+</svg>
+`;
+
+document.getElementById('iconWrap').innerHTML = svgMarkup;
+
+/* ---------- 导出 PNG ---------- */
+document.getElementById('download').addEventListener('click', () => {
+  const svgEl = document.querySelector('#iconWrap svg');
+  const serializer = new XMLSerializer();
+  const source = serializer.serializeToString(svgEl);
+  const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, 512, 512);
+    URL.revokeObjectURL(url);
+    const a = document.createElement('a');
+    a.download = 'NovaLaunch-icon-512.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  };
+  img.onerror = () => alert('导出失败，请改用截图或直接保存 SVG。');
+  img.src = url;
+});
+</script>
+</body>
+</html>

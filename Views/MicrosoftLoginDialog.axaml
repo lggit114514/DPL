@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DPL.Views.MicrosoftLoginDialog"
+        Title="微软账号登录"
+        Width="600" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppBackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        FontFamily="{StaticResource AppFontFamily}">
+
+  <Border Background="{DynamicResource CardBackgroundBrush}"
+          BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0"
+          Padding="24">
+    <StackPanel Spacing="14">
+
+      <StackPanel Spacing="4">
+        <TextBlock Text="登录 Microsoft 账号" FontSize="17" FontWeight="Bold" />
+        <TextBlock Text="登录完成后需要把浏览器地址栏里的网址粘贴回来，用于获取授权码"
+                   Classes="secondary" FontSize="11.5" TextWrapping="Wrap" />
+      </StackPanel>
+
+      <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="10" Padding="14,12"
+              BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+        <StackPanel Spacing="7">
+          <TextBlock Text="操作步骤" Classes="fieldLabel" />
+          <TextBlock FontSize="11.5" TextWrapping="Wrap" Classes="secondary"
+                     Text="1. 启动器已经用默认浏览器打开了 Microsoft 登录页，请登录要使用的账号（需购买过 Minecraft: Java 版）。" />
+          <TextBlock FontSize="11.5" TextWrapping="Wrap" Classes="secondary"
+                     Text="2. 登录成功后浏览器会跳转到一个空白页面，地址以 login.live.com/oauth20_desktop.srf 开头 —— 复制整个地址栏内容。" />
+          <TextBlock FontSize="11.5" TextWrapping="Wrap" Classes="secondary"
+                     Text="3. 粘贴到下面的输入框，点击「完成」，登录会自动继续。" />
+        </StackPanel>
+      </Border>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="回跳网址（含 code 参数）" Classes="fieldLabel" />
+        <TextBox Name="UrlBox" Watermark="https://login.live.com/oauth20_desktop.srf?code=..." />
+      </StackPanel>
+
+      <TextBlock Name="ErrorText" Foreground="{DynamicResource DangerBrush}" FontSize="11.5"
+                 TextWrapping="Wrap" IsVisible="False" />
+
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+        <Button Theme="{StaticResource GhostButtonTheme}" Content="从剪贴板粘贴"
+                Click="OnPasteFromClipboard" Padding="14,9" />
+        <Button Grid.Column="1" Theme="{StaticResource GhostButtonTheme}" Content="重新打开登录页"
+                Click="OnReopenBrowser" Padding="14,9" Margin="8,0,0,0" />
+        <Button Grid.Column="3" Theme="{StaticResource GhostButtonTheme}" Content="取消"
+                Click="OnCancel" Padding="18,9" Margin="0,0,8,0" />
+        <Button Grid.Column="4" Theme="{StaticResource PrimaryButtonTheme}" Content="完成"
+                Click="OnConfirm" Padding="26,9" />
+      </Grid>
+    </StackPanel>
+  </Border>
+</Window>

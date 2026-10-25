@@ -1,0 +1,241 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DPL.ViewModels"
+        xmlns:views="using:DPL.Views"
+        x:Class="DPL.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="DPL · 带派 Minecraft 启动器"
+        Icon="avares://DPL/Assets/app.ico"
+        Width="1240" Height="840"
+        MinWidth="1000" MinHeight="660"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource AppBackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        FontFamily="{StaticResource AppFontFamily}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+  <Grid RowDefinitions="46,*">
+
+    <!-- 背景层：浅蓝毛玻璃主题的壁纸（UniformToFill 等比铺满 + 裁剪，原样显示，不加模糊/遮罩） -->
+    <Image Grid.RowSpan="2" Stretch="UniformToFill" IsHitTestVisible="False"
+           Source="avares://DPL/Assets/bg.png"
+           IsVisible="{Binding IsBlueGlassTheme}" />
+
+    <!-- 毛玻璃光晕层：半透明径向渐变 + BlurEffect（纯应用层实现，不调用系统 Acrylic/DWM） -->
+    <Border Grid.RowSpan="2" Background="{DynamicResource GlassBloomBrush}"
+            Effect="{DynamicResource GlassBloomEffect}" IsHitTestVisible="False"
+            IsVisible="{Binding IsGlassTheme}" />
+
+    <!-- ==================== 自定义标题栏 ==================== -->
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Background="Transparent"
+          PointerPressed="OnTitleBarPointerPressed">
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10"
+                  VerticalAlignment="Center" Margin="20,0,0,0">
+        
+        <TextBlock Text="DPL" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+        <Border Width="1" Height="12" Background="{DynamicResource BorderBrush}" VerticalAlignment="Center" />
+        <TextBlock Text="带派 Minecraft 启动器" FontSize="11.5" Classes="muted" VerticalAlignment="Center" />
+      </StackPanel>
+
+      <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+        <Button Theme="{StaticResource WindowButtonTheme}"
+                Command="{Binding MinimizeWindowCommand}"
+                ToolTip.Tip="最小化">
+          <!-- 用固定 16x16 容器 + 居中矩形，避免 Path 的 Stretch 按包围盒左上角缩放导致图标偏上 -->
+          <Grid Width="16" Height="16">
+            <Rectangle Width="10" Height="2" RadiusX="1" RadiusY="1"
+                       Fill="{DynamicResource TextSecondaryBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Grid>
+        </Button>
+        <Button Theme="{StaticResource WindowButtonTheme}"
+                Command="{Binding MaximizeWindowCommand}"
+                ToolTip.Tip="最大化 / 还原">
+          <Path Data="M3,3 H13 V13 H3 Z" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.2"
+                Width="15" Height="15" Stretch="Uniform" />
+        </Button>
+        <Button Theme="{StaticResource CloseWindowButtonTheme}"
+                Command="{Binding CloseWindowCommand}"
+                ToolTip.Tip="关闭">
+          <Path Data="M4,4 L12,12 M12,4 L4,12" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.2"
+                Width="16" Height="16" Stretch="Uniform" />
+        </Button>
+      </StackPanel>
+    </Grid>
+
+    <!-- ==================== 主体：侧边栏 + 内容区 ==================== -->
+    <Grid Grid.Row="1" ColumnDefinitions="236,*">
+
+      <!-- 侧边栏 -->
+      <Border Grid.Column="0"
+              Background="{DynamicResource SidebarBackgroundBrush}"
+              BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="0,1,1,0">
+        <Grid RowDefinitions="Auto,*,Auto" Margin="14,18">
+
+          <!-- 导航 -->
+          <StackPanel Grid.Row="0" Spacing="6">
+
+            <!-- 本地启动 -->
+            <Grid>
+              <Border CornerRadius="10" Background="{DynamicResource NavActiveBrush}"
+                      IsVisible="{Binding IsLocalPage}" />
+              <Border Width="3" Height="18" CornerRadius="2" HorizontalAlignment="Left"
+                      Background="{DynamicResource AccentBrush}" Margin="-14,0,0,0"
+                      IsVisible="{Binding IsLocalPage}" />
+              <Button Theme="{StaticResource NavButtonTheme}" Command="{Binding ShowLocalPageCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Path Data="M5,3 L15,9 L5,15 Z" Fill="{DynamicResource AccentBrush}"
+                        Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+                  <TextBlock Text="本地启动" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </Grid>
+
+            <!-- 下载游戏 -->
+            <Grid>
+              <Border CornerRadius="10" Background="{DynamicResource NavActiveBrush}"
+                      IsVisible="{Binding IsDownloadPage}" />
+              <Border Width="3" Height="18" CornerRadius="2" HorizontalAlignment="Left"
+                      Background="{DynamicResource AccentBrush}" Margin="-14,0,0,0"
+                      IsVisible="{Binding IsDownloadPage}" />
+              <Button Theme="{StaticResource NavButtonTheme}" Command="{Binding ShowDownloadPageCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Path Data="M9,2 H11 V9 H14 L10,13.5 L6,9 H9 Z M4,15 H16 V17 H4 Z"
+                        Fill="{DynamicResource TextSecondaryBrush}"
+                        Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+                  <TextBlock Text="下载游戏" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </Grid>
+
+            <!-- 模组下载 -->
+            <Grid>
+              <Border CornerRadius="10" Background="{DynamicResource NavActiveBrush}"
+                      IsVisible="{Binding IsModsPage}" />
+              <Border Width="3" Height="18" CornerRadius="2" HorizontalAlignment="Left"
+                      Background="{DynamicResource AccentBrush}" Margin="-14,0,0,0"
+                      IsVisible="{Binding IsModsPage}" />
+              <Button Theme="{StaticResource NavButtonTheme}" Command="{Binding ShowModsPageCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Path Data="M3,3 H8 V8 H3 Z M10,3 H15 V8 H10 Z M3,10 H8 V15 H3 Z M10,10 H15 V15 H10 Z"
+                        Fill="{DynamicResource TextSecondaryBrush}"
+                        Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+                  <TextBlock Text="Mod" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </Grid>
+
+            <!-- 资源包下载（独立页面，与模组下载分开） -->
+            <Grid>
+              <Border CornerRadius="10" Background="{DynamicResource NavActiveBrush}"
+                      IsVisible="{Binding IsResourcePackPage}" />
+              <Border Width="3" Height="18" CornerRadius="2" HorizontalAlignment="Left"
+                      Background="{DynamicResource AccentBrush}" Margin="-14,0,0,0"
+                      IsVisible="{Binding IsResourcePackPage}" />
+              <Button Theme="{StaticResource NavButtonTheme}" Command="{Binding ShowResourcePackPageCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Path Data="M8,2 L14,5 V11 L8,14 L2,11 V5 Z M8,2 V14 M2,5 L8,8 L14,5"
+                        Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.1"
+                        Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+                  <TextBlock Text="资源包" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </Grid>
+
+            <!-- 设置 -->
+            <Grid>
+              <Border CornerRadius="10" Background="{DynamicResource NavActiveBrush}"
+                      IsVisible="{Binding IsSettingsPage}" />
+              <Border Width="3" Height="18" CornerRadius="2" HorizontalAlignment="Left"
+                      Background="{DynamicResource AccentBrush}" Margin="-14,0,0,0"
+                      IsVisible="{Binding IsSettingsPage}" />
+              <Button Theme="{StaticResource NavButtonTheme}" Command="{Binding ShowSettingsPageCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Path Data="M2,4 H14 V6 H2 Z M2,9 H14 V11 H2 Z M2,14 H14 V16 H2 Z M11,3 H13 V7 H11 Z M5,8 H7 V12 H5 Z M9,13 H11 V17 H9 Z"
+                        Fill="{DynamicResource TextSecondaryBrush}"
+                        Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+                  <TextBlock Text="设置" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </Grid>
+          </StackPanel>
+
+          <!-- 侧边栏底部信息 -->
+          <StackPanel Grid.Row="2" Spacing="10">
+            <Border Background="{DynamicResource CardBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="12,10">
+              <StackPanel Spacing="5">
+                <TextBlock Text="当前游戏目录" Classes="fieldLabel" />
+                <TextBlock Text="{Binding GameDirectory}" FontSize="10.5"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           TextWrapping="Wrap" MaxLines="3" />
+              </StackPanel>
+            </Border>
+            <Button Theme="{StaticResource GhostButtonTheme}"
+                    Command="{Binding OpenGameDirectoryCommand}"
+                    HorizontalAlignment="Stretch" Content="打开游戏目录" />
+            <TextBlock Text="Powered by CmlLib.Core" FontSize="10" Classes="muted"
+                       HorizontalAlignment="Center" Margin="0,4,0,0" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- 内容区 -->
+      <Grid Grid.Column="1" RowDefinitions="*,Auto">
+
+        <Grid Grid.Row="0">
+          <views:LocalLaunchView IsVisible="{Binding IsLocalPage}" />
+          <views:DownloadView IsVisible="{Binding IsDownloadPage}" />
+          <views:SettingsView IsVisible="{Binding IsSettingsPage}" />
+          <views:ModLoaderInstallView IsVisible="{Binding IsInstallPage}" />
+          <!-- 可见性由各自页面的 IsActive 控制：这里只切换 DataContext，
+               避免在 MainWindowViewModel 的数据类型下解析子页面 VM 的属性。 -->
+          <views:ModBrowserView DataContext="{Binding ModBrowser}" />
+          <views:ResourcePackView DataContext="{Binding ResourcePackBrowser}" />
+        </Grid>
+
+        <!-- 全局状态栏 / 下载进度 -->
+        <Border Grid.Row="1" Background="{DynamicResource CodeBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+                Padding="22,9">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <Border Width="7" Height="7" CornerRadius="4" VerticalAlignment="Center"
+                    Background="{DynamicResource AccentBrush}" Opacity="0.85" />
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="10,0,16,0"
+                        VerticalAlignment="Center">
+              <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="6" Padding="7,2"
+                      IsVisible="{Binding IsGameRunning}" VerticalAlignment="Center">
+                <TextBlock Text="游戏运行中" FontSize="10" Foreground="{DynamicResource AccentBrush}" />
+              </Border>
+              <TextBlock Text="{Binding StatusMessage}" FontSize="11.5"
+                         VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis"
+                         Classes="statusText"
+                         Classes.error="{Binding StatusIsError}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12"
+                        VerticalAlignment="Center" IsVisible="{Binding IsInstalling}">
+              <TextBlock Text="{Binding InstallStageText}" FontSize="11" Classes="muted"
+                         VerticalAlignment="Center" />
+              <ProgressBar Width="170" Minimum="0" Maximum="100" Value="{Binding InstallPercent}"
+                           VerticalAlignment="Center" />
+              <TextBlock Text="{Binding InstallSizeText}" FontSize="11" Classes="secondary"
+                         VerticalAlignment="Center" MinWidth="120" />
+              <TextBlock Text="{Binding InstallFileText}" FontSize="10.5" Classes="muted"
+                         VerticalAlignment="Center" MaxWidth="200"
+                         TextTrimming="CharacterEllipsis" />
+              <Button Theme="{StaticResource GhostButtonTheme}" Content="取消"
+                      Command="{Binding CancelInstallCommand}" Padding="10,4" FontSize="11" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Grid>
+  </Grid>
+</Window>

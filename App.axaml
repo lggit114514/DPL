@@ -1,0 +1,79 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DPL.App"
+             RequestedThemeVariant="Dark">
+
+  <!--
+    应用级资源：颜色 / 画刷 / 字体。
+    统一在 Application.Resources 中定义，方便所有视图通过 StaticResource 引用。
+  -->
+  <Application.Resources>
+    <ResourceDictionary>
+      <!-- 主题强调色：覆盖 Fluent 主题的强调色，让复选框、滑块、进度条等控件统一为 Minecraft 绿 -->
+      <Color x:Key="SystemAccentColor">#4ADE80</Color>
+      <Color x:Key="SystemAccentColorDark1">#3FCB73</Color>
+      <Color x:Key="SystemAccentColorDark2">#33B364</Color>
+      <Color x:Key="SystemAccentColorDark3">#2A9553</Color>
+      <Color x:Key="SystemAccentColorLight1">#63E898</Color>
+      <Color x:Key="SystemAccentColorLight2">#86EFA9</Color>
+      <Color x:Key="SystemAccentColorLight3">#A9F5C1</Color>
+
+      <FontFamily x:Key="AppFontFamily">Inter, PingFang SC, Hiragino Sans GB, Microsoft YaHei UI, Segoe UI, Noto Sans CJK SC, WenQuanYi Micro Hei, sans-serif</FontFamily>
+
+      <!-- 基础画刷 -->
+      <SolidColorBrush x:Key="AppBackgroundBrush" Color="#0C0F14" />
+      <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#11151B" />
+      <SolidColorBrush x:Key="CardBackgroundBrush" Color="#161B23" />
+      <SolidColorBrush x:Key="CardHoverBrush" Color="#1C2330" />
+      <SolidColorBrush x:Key="CardSelectedBrush" Color="#15251C" />
+      <SolidColorBrush x:Key="InputBackgroundBrush" Color="#12161D" />
+      <SolidColorBrush x:Key="NavActiveBrush" Color="#16291D" />
+
+      <!-- 边框 -->
+      <SolidColorBrush x:Key="BorderBrush" Color="#232B38" />
+      <SolidColorBrush x:Key="BorderHoverBrush" Color="#334052" />
+
+      <!-- 文字 -->
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E9EEF6" />
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="#96A4B7" />
+      <SolidColorBrush x:Key="TextMutedBrush" Color="#5E6A7A" />
+
+      <!-- 强调色 -->
+      <SolidColorBrush x:Key="AccentBrush" Color="#4ADE80" />
+      <SolidColorBrush x:Key="AccentHoverBrush" Color="#63E898" />
+      <SolidColorBrush x:Key="AccentPressedBrush" Color="#35C46C" />
+      <SolidColorBrush x:Key="AccentSoftBrush" Color="#1D3A2A" />
+      <SolidColorBrush x:Key="AccentForegroundBrush" Color="#07130C" />
+
+      <!-- 语义色 -->
+      <SolidColorBrush x:Key="DangerBrush" Color="#FF6B6B" />
+      <SolidColorBrush x:Key="WarningBrush" Color="#F5A524" />
+      <SolidColorBrush x:Key="InfoBrush" Color="#7AA2F7" />
+      <SolidColorBrush x:Key="CodeBackgroundBrush" Color="#0A0D12" />
+
+      <!-- 版本类型标签（正式版 / 快照 / 远古版本 / 未知），浅色主题由 ThemeManager 覆盖 -->
+      <SolidColorBrush x:Key="VersionReleaseBackgroundBrush" Color="#1C3A2B" />
+      <SolidColorBrush x:Key="VersionReleaseTextBrush" Color="#4ADE80" />
+      <SolidColorBrush x:Key="VersionReleaseBorderBrush" Color="#2E6B4A" />
+      <SolidColorBrush x:Key="VersionSnapshotBackgroundBrush" Color="#1B2A44" />
+      <SolidColorBrush x:Key="VersionSnapshotTextBrush" Color="#7AA2F7" />
+      <SolidColorBrush x:Key="VersionSnapshotBorderBrush" Color="#33507F" />
+      <SolidColorBrush x:Key="VersionOldBackgroundBrush" Color="#2A2340" />
+      <SolidColorBrush x:Key="VersionOldTextBrush" Color="#C4A7F7" />
+      <SolidColorBrush x:Key="VersionOldBorderBrush" Color="#4B3D77" />
+      <SolidColorBrush x:Key="VersionUnknownBackgroundBrush" Color="#3A2E1A" />
+      <SolidColorBrush x:Key="VersionUnknownTextBrush" Color="#F5A524" />
+      <SolidColorBrush x:Key="VersionUnknownBorderBrush" Color="#6B5327" />
+
+      <!-- 主题切换用：深色主题下的默认值（壁纸透明、光晕不启用；浅色系主题由 ThemeManager 覆盖） -->
+      <SolidColorBrush x:Key="GlassBloomBrush" Color="Transparent" />
+      <SolidColorBrush x:Key="GlassHighlightBrush" Color="Transparent" />
+      <BlurEffect x:Key="GlassBloomEffect" Radius="0" />
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://DPL/Styles/AppStyles.axaml" />
+  </Application.Styles>
+</Application>
