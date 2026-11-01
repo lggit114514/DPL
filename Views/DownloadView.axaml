@@ -13,6 +13,8 @@
         <StackPanel Orientation="Horizontal" Spacing="8">
           <TextBlock Text="{Binding OnlineCountText}" Classes="secondary" FontSize="12" />
           <TextBlock Text="·" Classes="muted" FontSize="12" />
+          <TextBlock Text="{Binding InstallSpeedText}" Classes="accent" FontSize="12"
+                     IsVisible="{Binding IsInstalling}" />
           <TextBlock Text="点击版本卡片即可选择一起安装 Fabric / Forge 等模组加载器" Classes="muted" FontSize="12" />
         </StackPanel>
       </StackPanel>

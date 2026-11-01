@@ -66,6 +66,9 @@ public sealed class ModConfig
     /// <summary>单个大文件分片下载时，同时下载的分片数（默认 6）。</summary>
     public int ChunkParallelism { get; init; } = 6;
 
+    /// <summary>用户设置的下载线程数（1-32），用于 Downloader 的 ChunkCount。</summary>
+    public int DownloadThreadCount { get; init; } = 8;
+
     /// <summary>超过该大小的文件才启用分片下载（默认 10 MB）。</summary>
     public long ChunkThresholdBytes { get; init; } = ChunkedFileDownloader.DefaultThresholdBytes;
 
@@ -91,6 +94,7 @@ public sealed class ModConfig
         return new ModConfig
         {
             CurseForgeApiKey = string.IsNullOrWhiteSpace(key) ? null : key.Trim(),
+            DownloadThreadCount = Math.Clamp(settings.DownloadThreadCount, 1, 32),
         };
     }
 

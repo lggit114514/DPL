@@ -1,10 +1,15 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using DPL.Models;
 using DPL.Services;
+using DPL.Services.Modpacks;
 using DPL.Services.Mods;
 using DPL.Services.ResourcePacks;
+using DPL.Views;
 
 namespace DPL.ViewModels;
 
@@ -19,6 +24,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly IFabricApiService _fabricApiService;
     private readonly LauncherSettings _settings;
     private readonly IProgress<InstallProgressInfo> _installProgress;
+    private readonly JavaRuntimeManager _javaRuntimeManager;
 
     private CancellationTokenSource? _activeCts;
 
@@ -27,7 +33,10 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _versionsDirectory;
     private string _playerName;
     private string _javaPath;
+    private string _javaRuntimeDirectory;
+    private bool _autoDownloadJava;
     private int _maxMemoryMb;
+    private int _downloadThreadCount = 8;
     private bool _checkFilesBeforeLaunch;
     private bool _useVersionIsolation;
     private bool _statusIsError;
@@ -35,9 +44,14 @@ public sealed class MainWindowViewModel : ViewModelBase
     private VersionItemViewModel? _selectedLocalVersion;
     private int _selectedTypeFilterIndex = 1;
     private string _searchText = string.Empty;
+    private bool _isFavoriteSectionExpanded = true;
+    private bool _isAllSectionExpanded = true;
     private string _statusMessage = "准备就绪";
     private string _installStageText = string.Empty;
     private string _installSizeText = string.Empty;
+    private string _installSpeedText = string.Empty;
+    private long _lastInstallBytes;
+    private DateTime _lastInstallSpeedAt = DateTime.UtcNow;
     private string _installFileText = string.Empty;
     private double _installPercent;
     private bool _isInstalling;
@@ -64,8 +78,19 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _fabricApiStatusText = string.Empty;
     private FabricApiRelease? _recommendedFabricApi;
 
+    private string _installVersionName = string.Empty;
+    private string? _autoInstallName;
+    private string _installNameError = string.Empty;
+    private bool _isInstallNameValid;
+
     /// <summary>加载器查询代号：每次切换加载器 +1，用于丢弃过期的查询结果。</summary>
     private int _loaderQueryGeneration;
+
+    /// <summary>版本名称中不允许出现的字符（跨平台统一限制）。</summary>
+    private static readonly char[] InvalidInstallVersionChars =
+    {
+        '\\', '/', ':', '*', '?', '"', '<', '>', '|',
+    };
 
     /// <summary>文件路径比较：Windows 忽略大小写，macOS/Linux 区分大小写。</summary>
     private static readonly StringComparison PathComparison =
@@ -90,6 +115,11 @@ public sealed class MainWindowViewModel : ViewModelBase
         _fabricApiService = fabricApiService;
 
         _settings = settingsService.Load();
+
+        // 便携目录创建失败并回退到系统目录时，把提示写进启动器日志。
+        if (!string.IsNullOrWhiteSpace(_settingsService.LastWarning))
+            AppendAppLog("[DPL] " + _settingsService.LastWarning);
+
         _minecraftService.UseGameDirectory(_settings.GameDirectory);
         _minecraftService.UseVersionsDirectory(_settings.VersionsDirectory);
 
@@ -97,7 +127,13 @@ public sealed class MainWindowViewModel : ViewModelBase
         _versionsDirectory = _settings.VersionsDirectory;
         _playerName = _settings.PlayerName;
         _javaPath = _settings.JavaPath;
+        _javaRuntimeDirectory = string.IsNullOrWhiteSpace(_settings.JavaRuntimeDirectory)
+            ? GetDefaultJavaRuntimeDirectory()
+            : _settings.JavaRuntimeDirectory.Trim().Trim('"');
+        _autoDownloadJava = _settings.AutoDownloadJava;
         _maxMemoryMb = _settings.MaxMemoryMb;
+        _minecraftService.UseJavaRuntimeDirectory(_javaRuntimeDirectory);
+        _downloadThreadCount = Math.Clamp(_settings.DownloadThreadCount, 1, 32);
         _checkFilesBeforeLaunch = _settings.CheckFilesBeforeLaunch;
         _useVersionIsolation = _settings.UseVersionIsolation;
         _useMicrosoftAccount = _settings.UseMicrosoftAccount;
@@ -110,6 +146,10 @@ public sealed class MainWindowViewModel : ViewModelBase
             OfflineNameHistory.Add(name);
 
         _installProgress = new UiProgress<InstallProgressInfo>(OnInstallProgressChanged);
+
+        // Java 运行时自动管理：检测、下载、解压、递归定位 bin/java。
+        _javaRuntimeManager = new JavaRuntimeManager(() => JavaRuntimeDirectory);
+        _javaRuntimeManager.LogWritten += AppendAppLog;
 
         // NeoForge 官方源在国内经常连不上，下载会自动切换镜像；这里把每次尝试写进日志面板方便排查。
         MirrorHttpHandler.LogWritten += AppendMirrorLog;
@@ -171,7 +211,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         ModBrowser = new ModBrowserViewModel(
             () => ModTargetResolver.Resolve(_minecraftService, SelectedLocalVersion?.Name, GameDirectory),
             () => CurseForgeApiKey,
-            line => AppendAppLog(line));
+            line => AppendAppLog(line),
+            () => DownloadThreadCount);
 
         // 资源包下载页：独立 ViewModel / 服务链路，与模组下载完全分开。
         ResourcePackBrowser = new ResourcePackBrowserViewModel(
@@ -180,11 +221,16 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         RefreshLocalVersionsCommand = CreateCommand(_ => RefreshLocalVersionsAsync());
         RefreshOnlineVersionsCommand = CreateCommand(_ => RefreshOnlineVersionsAsync());
+        ToggleFavoriteSectionCommand = new RelayCommand(
+            _ => IsFavoriteSectionExpanded = !IsFavoriteSectionExpanded);
+        ToggleAllSectionCommand = new RelayCommand(
+            _ => IsAllSectionExpanded = !IsAllSectionExpanded);
         CancelInstallCommand = new RelayCommand(_ => CancelActiveOperation(), _ => IsInstalling);
         SaveSettingsCommand = new RelayCommand(_ => SaveSettings(withFeedback: true));
 
         BrowseGameDirectoryCommand = CreateCommand(async _ => await BrowseGameDirectoryAsync());
         BrowseJavaCommand = CreateCommand(async _ => await BrowseJavaAsync());
+        BrowseJavaRuntimeDirectoryCommand = CreateCommand(async _ => await BrowseJavaRuntimeDirectoryAsync());
         AutoDetectJavaCommand = CreateCommand(async _ => await RefreshJavaCandidatesAsync());
         OpenGameDirectoryCommand = new RelayCommand(_ => OpenGameDirectory());
         UseDefaultGameDirectoryCommand = CreateCommand(async _ =>
@@ -214,6 +260,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         RefreshMicrosoftAccountsCommand = CreateCommand(async _ => await LoadMicrosoftAccountsAsync());
         ClearOfflineHistoryCommand = new RelayCommand(_ => ClearOfflineHistory());
         OpenAccountsFileFolderCommand = new RelayCommand(_ => OpenAccountsFolder());
+        OpenLogsFolderCommand = new RelayCommand(_ => OpenLogsFolder());
 
         MinimizeWindowCommand = new RelayCommand(_ => MinimizeRequested?.Invoke());
         MaximizeWindowCommand = new RelayCommand(_ => MaximizeRequested?.Invoke());
@@ -316,6 +363,47 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>安装页副标题。</summary>
     public string InstallPageSubtitle =>
         "选择要和原版一起安装的模组加载器，确认后会下载并出现在本地版本列表里";
+
+    /// <summary>
+    /// 自定义版本（实例）名称，也就是 versions 下的文件夹名。
+    /// 默认按“原版版本号-加载器”生成，用户可修改。
+    /// </summary>
+    public string InstallVersionName
+    {
+        get => _installVersionName;
+        set
+        {
+            if (!SetProperty(ref _installVersionName, value ?? string.Empty))
+                return;
+
+            ValidateInstallVersionName();
+        }
+    }
+
+    /// <summary>版本名称校验失败时的提示；为空表示名称可用。</summary>
+    public string InstallNameError
+    {
+        get => _installNameError;
+        private set
+        {
+            if (SetProperty(ref _installNameError, value))
+                OnPropertyChanged(nameof(HasInstallNameError));
+        }
+    }
+
+    /// <summary>是否显示版本名称错误提示。</summary>
+    public bool HasInstallNameError => !string.IsNullOrWhiteSpace(InstallNameError);
+
+    /// <summary>版本名称是否通过校验（非空、无非法字符、未与已有实例重名）。</summary>
+    public bool IsInstallNameValid
+    {
+        get => _isInstallNameValid;
+        private set
+        {
+            if (SetProperty(ref _isInstallNameValid, value))
+                OnPropertyChanged(nameof(CanStartInstall));
+        }
+    }
 
     /// <summary>当前选中的加载器类型。</summary>
     public ModLoaderKind SelectedLoaderKind
@@ -470,16 +558,23 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>安装按钮文字。</summary>
     public string InstallActionText => IsInstalling ? "正在安装…" : "开始安装";
 
-    /// <summary>是否可以开始安装（原版随时可以；加载器需要已查询到可用版本）。</summary>
+    /// <summary>
+    /// 是否可以开始安装：版本名称必须有效，原版随时可以，
+    /// 加载器需要已查询到可用版本。
+    /// </summary>
     public bool CanStartInstall => !IsInstalling &&
+                                   IsInstallNameValid &&
                                    (IsVanillaLoaderSelected || (LoaderSupported && SelectedLoaderVersion is not null));
 
     #endregion
 
     #region 版本列表
 
-    /// <summary>本地已安装的版本列表。</summary>
+    /// <summary>本地已安装的全部版本（收藏 + 未收藏），供“全部版本”列表绑定。</summary>
     public ObservableCollection<VersionItemViewModel> LocalVersions { get; } = new();
+
+    /// <summary>本地已安装且已收藏的版本列表（是 <see cref="LocalVersions"/> 的子集）。</summary>
+    public ObservableCollection<VersionItemViewModel> FavoriteLocalVersions { get; } = new();
 
     /// <summary>从 Mojang 获取的在线版本完整列表。</summary>
     public ObservableCollection<VersionItemViewModel> OnlineVersions { get; } = new();
@@ -507,17 +602,67 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>底部栏显示的已选版本名称。</summary>
     public string SelectedVersionText => SelectedLocalVersion?.Name ?? "未选择版本";
 
+    /// <summary>收藏区块是否展开。</summary>
+    public bool IsFavoriteSectionExpanded
+    {
+        get => _isFavoriteSectionExpanded;
+        set
+        {
+            if (SetProperty(ref _isFavoriteSectionExpanded, value))
+                OnPropertyChanged(nameof(FavoriteSectionMaxHeight));
+        }
+    }
+
+    /// <summary>全部版本区块是否展开。</summary>
+    public bool IsAllSectionExpanded
+    {
+        get => _isAllSectionExpanded;
+        set
+        {
+            if (SetProperty(ref _isAllSectionExpanded, value))
+                OnPropertyChanged(nameof(AllSectionMaxHeight));
+        }
+    }
+
+    /// <summary>收藏区块展开后的高度上限；按条目数计算，避免固定 2000 把列表截断。</summary>
+    public double FavoriteSectionMaxHeight
+        => IsFavoriteSectionExpanded
+            ? CalculateSectionHeight(FavoriteLocalVersions.Count)
+            : 0d;
+
+    /// <summary>全部版本区块展开后的高度上限；按全量条目数计算。</summary>
+    public double AllSectionMaxHeight
+        => IsAllSectionExpanded
+            ? CalculateSectionHeight(LocalVersions.Count)
+            : 0d;
+
+    /// <summary>
+    /// 按条目数估算展开高度。每行约 70px，这里取 88px 留足余量；
+    /// 上限大于真实内容高度时不会参与布局裁剪，只会让动画更快到达完整高度。
+    /// </summary>
+    private static double CalculateSectionHeight(int count)
+        => count <= 0 ? 0d : count * 88d + 24d;
+
+    /// <summary>是否存在收藏的本地版本（决定收藏区块是否整体显示）。</summary>
+    public bool HasFavoriteLocalVersions => FavoriteLocalVersions.Count > 0;
+
     /// <summary>本地列表是否为空。</summary>
     public bool HasLocalVersions => LocalVersions.Count > 0;
 
     /// <summary>本地列表是否为空（用于显示空状态提示）。</summary>
-    public bool IsLocalListEmpty => LocalVersions.Count == 0;
+    public bool IsLocalListEmpty => !HasLocalVersions;
 
     /// <summary>在线列表是否为空。</summary>
     public bool IsOnlineListEmpty => FilteredOnlineVersions.Count == 0;
 
     /// <summary>在线版本数量提示文本。</summary>
     public string OnlineCountText => $"共 {FilteredOnlineVersions.Count} 个版本";
+
+    /// <summary>收藏区块的数量提示。</summary>
+    public string FavoriteCountText => $"{FavoriteLocalVersions.Count} 个";
+
+    /// <summary>“全部版本”区块的数量提示（收藏 + 未收藏）。</summary>
+    public string AllCountText => $"{LocalVersions.Count} 个";
 
     /// <summary>本地版本数量提示文本。</summary>
     public string LocalCountText => $"共 {LocalVersions.Count} 个版本";
@@ -653,6 +798,39 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>Java 路径的展示文本。</summary>
     public string JavaPathText => string.IsNullOrWhiteSpace(JavaPath) ? "自动检测" : JavaPath;
 
+    /// <summary>Java 运行库存储目录；自动下载的 Java 会解压到该目录。</summary>
+    public string JavaRuntimeDirectory
+    {
+        get => _javaRuntimeDirectory;
+        set
+        {
+            var normalized = string.IsNullOrWhiteSpace(value)
+                ? GetDefaultJavaRuntimeDirectory()
+                : value.Trim().Trim('"');
+
+            if (!SetProperty(ref _javaRuntimeDirectory, normalized))
+                return;
+        }
+    }
+
+    /// <summary>是否允许自动下载缺失的 Java。</summary>
+    public bool AutoDownloadJava
+    {
+        get => _autoDownloadJava;
+        set
+        {
+            if (!SetProperty(ref _autoDownloadJava, value))
+                return;
+
+            SaveSettings();
+        }
+    }
+
+    private static string GetDefaultJavaRuntimeDirectory() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "DPL",
+        "runtime");
+
     /// <summary>最大内存（MB）。</summary>
     public int MaxMemoryMb
     {
@@ -676,6 +854,32 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     /// <summary>内存数值的展示文本。</summary>
     public string MemoryText => $"{MaxMemoryMb} MB";
+
+    /// <summary>下载线程数（1-32）；修改后立即保存到设置。</summary>
+    public int DownloadThreadCount
+    {
+        get => _downloadThreadCount;
+        set
+        {
+            var clamped = Math.Clamp(value, 1, 32);
+            if (!SetProperty(ref _downloadThreadCount, clamped))
+                return;
+
+            OnPropertyChanged(nameof(DownloadThreadCountSlider));
+            OnPropertyChanged(nameof(DownloadThreadText));
+            SaveSettings();
+        }
+    }
+
+    /// <summary>供 Slider 绑定的下载线程数（double 类型）。</summary>
+    public double DownloadThreadCountSlider
+    {
+        get => DownloadThreadCount;
+        set => DownloadThreadCount = (int)Math.Round(value);
+    }
+
+    /// <summary>下载线程数的展示文本。</summary>
+    public string DownloadThreadText => $"{DownloadThreadCount} 线程";
 
     /// <summary>启动前是否校验并补全游戏文件。</summary>
     public bool CheckFilesBeforeLaunch
@@ -931,6 +1135,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (!SetProperty(ref _isInstalling, value))
                 return;
 
+            if (value)
+            {
+                _lastInstallBytes = 0;
+                _lastInstallSpeedAt = DateTime.UtcNow;
+            }
+
             OnPropertyChanged(nameof(IsIdle));
             OnPropertyChanged(nameof(InstallActionText));
             OnPropertyChanged(nameof(CanStartInstall));
@@ -957,6 +1167,13 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         get => _installSizeText;
         set => SetProperty(ref _installSizeText, value);
+    }
+
+    /// <summary>实时下载速度文字，例如“12.5 MB/s”。</summary>
+    public string InstallSpeedText
+    {
+        get => _installSpeedText;
+        set => SetProperty(ref _installSpeedText, value);
     }
 
     /// <summary>当前正在处理的文件名。</summary>
@@ -1010,6 +1227,12 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>刷新本地版本列表。</summary>
     public ICommand RefreshLocalVersionsCommand { get; }
 
+    /// <summary>展开 / 收起收藏区块。</summary>
+    public ICommand ToggleFavoriteSectionCommand { get; }
+
+    /// <summary>展开 / 收起全部版本区块。</summary>
+    public ICommand ToggleAllSectionCommand { get; }
+
     /// <summary>刷新在线版本列表。</summary>
     public ICommand RefreshOnlineVersionsCommand { get; }
 
@@ -1027,6 +1250,9 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     /// <summary>重新扫描本机 Java。</summary>
     public ICommand AutoDetectJavaCommand { get; }
+
+    /// <summary>选择 Java 运行库存储目录。</summary>
+    public ICommand BrowseJavaRuntimeDirectoryCommand { get; }
 
     /// <summary>在文件管理器中打开游戏目录。</summary>
     public ICommand OpenGameDirectoryCommand { get; }
@@ -1079,6 +1305,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>打开保存微软账号文件的目录。</summary>
     public ICommand OpenAccountsFileFolderCommand { get; }
 
+    /// <summary>打开运行日志文件夹。</summary>
+    public ICommand OpenLogsFolderCommand { get; }
+
     /// <summary>按当前选择开始安装（原版 / 加载器 / 可选 Fabric API）。</summary>
     public ICommand StartInstallCommand { get; }
 
@@ -1122,15 +1351,27 @@ public sealed class MainWindowViewModel : ViewModelBase
         _settings.VersionsDirectory = VersionsDirectory;
         _settings.PlayerName = NormalizePlayerName(PlayerName);
         _settings.JavaPath = JavaPath;
+        _settings.JavaRuntimeDirectory = JavaRuntimeDirectory;
+        _settings.AutoDownloadJava = AutoDownloadJava;
         _settings.MaxMemoryMb = MaxMemoryMb;
+        _settings.DownloadThreadCount = DownloadThreadCount;
         _settings.CheckFilesBeforeLaunch = CheckFilesBeforeLaunch;
         _settings.UseVersionIsolation = UseVersionIsolation;
         _settings.UseMicrosoftAccount = UseMicrosoftAccount;
         _settings.MicrosoftAccountId = SelectedMicrosoftAccount?.Identifier ?? _microsoftAccountId;
         _settings.OfflineNameHistory = OfflineNameHistory.ToList();
         _settings.CurseForgeApiKey = CurseForgeApiKey;
+
+        // 只规范化收藏列表，不从当前本地列表反向重建，避免删掉“未安装但仍想保留”的收藏名称。
+        _settings.FavoriteVersions = (_settings.FavoriteVersions ?? new List<string>())
+            .Select(name => name?.Trim() ?? string.Empty)
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         _settings.Theme = ThemeManager.CurrentKey;
 
+        _minecraftService.UseJavaRuntimeDirectory(JavaRuntimeDirectory);
         _settingsService.Save(_settings);
 
         if (withFeedback)
@@ -1313,6 +1554,24 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 打开运行日志文件夹，方便用户把 latest.log 提供给开发者。
+    /// </summary>
+    private void OpenLogsFolder()
+    {
+        try
+        {
+            Directory.CreateDirectory(LauncherLogWriter.LogDirectory);
+        }
+        catch (Exception)
+        {
+            // 目录不可写时交给 OpenDirectory 给出失败提示。
+        }
+
+        if (!SystemIntegration.OpenDirectory(LauncherLogWriter.LogDirectory))
+            StatusMessage = "无法打开运行日志文件夹";
+    }
+
+    /// <summary>
     /// 记录一个离线账号名称到历史列表（最近使用的排在最前，去重，最多保留 10 条）。
     /// </summary>
     private void RecordOfflineName(string name)
@@ -1401,20 +1660,38 @@ public sealed class MainWindowViewModel : ViewModelBase
             var versions = await _minecraftService.GetLocalVersionsAsync().ConfigureAwait(true);
             var previousName = SelectedLocalVersion?.Name;
 
+            var favoriteNames = new HashSet<string>(
+                (_settings.FavoriteVersions ?? new List<string>())
+                    .Select(name => name?.Trim() ?? string.Empty)
+                    .Where(name => name.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
+
+            FavoriteLocalVersions.Clear();
             LocalVersions.Clear();
+
             foreach (var version in versions)
-                LocalVersions.Add(CreateVersionItem(version, allowInstall: false));
+            {
+                var isFavorite = favoriteNames.Contains(version.Name);
+                var item = CreateVersionItem(version, allowInstall: false, isFavorite);
 
-            SelectedLocalVersion = LocalVersions.FirstOrDefault(v => v.Name == previousName)
-                                   ?? LocalVersions.FirstOrDefault();
+                // 全量集合始终包含每一个本地版本；收藏只是它的一个子集。
+                LocalVersions.Add(item);
 
-            OnPropertyChanged(nameof(HasLocalVersions));
-            OnPropertyChanged(nameof(IsLocalListEmpty));
-            OnPropertyChanged(nameof(LocalCountText));
+                if (isFavorite)
+                    FavoriteLocalVersions.Add(item);
+            }
 
-            StatusMessage = LocalVersions.Count == 0
+            var allVersions = GetAllLocalVersions();
+            SelectedLocalVersion = allVersions
+                                       .FirstOrDefault(v => string.Equals(
+                                           v.Name, previousName, StringComparison.OrdinalIgnoreCase))
+                                   ?? allVersions.FirstOrDefault();
+
+            NotifyLocalCollectionsChanged();
+
+            StatusMessage = allVersions.Count == 0
                 ? "未发现本地版本，请前往“下载游戏”页面安装原版游戏"
-                : $"已加载 {LocalVersions.Count} 个本地版本";
+                : $"已加载 {allVersions.Count} 个本地版本";
         }
         catch (Exception ex)
         {
@@ -1423,6 +1700,75 @@ public sealed class MainWindowViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// 取得全部本地版本的稳定快照（收藏与未收藏都在其中）。
+    /// </summary>
+    public IReadOnlyList<VersionItemViewModel> GetAllLocalVersions()
+        => LocalVersions.ToList();
+
+    /// <summary>通知界面本地集合的可见性、数量与展开高度发生变化。</summary>
+    private void NotifyLocalCollectionsChanged()
+    {
+        OnPropertyChanged(nameof(HasFavoriteLocalVersions));
+        OnPropertyChanged(nameof(HasLocalVersions));
+        OnPropertyChanged(nameof(IsLocalListEmpty));
+        OnPropertyChanged(nameof(FavoriteCountText));
+        OnPropertyChanged(nameof(AllCountText));
+        OnPropertyChanged(nameof(LocalCountText));
+        OnPropertyChanged(nameof(FavoriteSectionMaxHeight));
+        OnPropertyChanged(nameof(AllSectionMaxHeight));
+    }
+
+    /// <summary>
+    /// 切换一个本地版本的收藏状态：更新设置、保存到磁盘，并把它加入 / 移出收藏集合。
+    /// “全部版本”使用的 <see cref="LocalVersions"/> 始终保留该条目。
+    /// </summary>
+    /// <param name="item">被点击爱心的本地版本。</param>
+    private void ToggleFavorite(VersionItemViewModel item)
+    {
+        var next = !item.IsFavorite;
+        item.IsFavorite = next;
+
+        var favorites = _settings.FavoriteVersions ??= new List<string>();
+        var existing = favorites.FirstOrDefault(name =>
+            string.Equals((name ?? string.Empty).Trim(), item.Name, StringComparison.OrdinalIgnoreCase));
+
+        if (next)
+        {
+            if (existing is null)
+                favorites.Add(item.Name);
+        }
+        else if (existing is not null)
+        {
+            favorites.Remove(existing);
+        }
+
+        // 立即持久化；SaveSettings 只规范化 FavoriteVersions，不会丢掉未安装的收藏名称。
+        SaveSettings();
+
+        var wasSelected = ReferenceEquals(SelectedLocalVersion, item);
+
+        if (next)
+        {
+            if (!FavoriteLocalVersions.Contains(item))
+                FavoriteLocalVersions.Add(item);
+        }
+        else
+        {
+            FavoriteLocalVersions.Remove(item);
+        }
+
+        NotifyLocalCollectionsChanged();
+
+        // 两个 ListBox 共用 SelectedLocalVersion；条目移动后恢复并强制刷新一次绑定，
+        // 让目标列表重新选中同一个版本，同时不改变右侧启动面板。
+        if (wasSelected)
+        {
+            SelectedLocalVersion = item;
+            OnPropertyChanged(nameof(SelectedLocalVersion));
         }
     }
 
@@ -1521,13 +1867,18 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// 创建版本条目，并为其绑定安装 / 启动 / 打开版本文件夹 / 打开安装页面的回调。
     /// </summary>
-    private VersionItemViewModel CreateVersionItem(MinecraftVersionInfo info, bool allowInstall)
+    private VersionItemViewModel CreateVersionItem(
+        MinecraftVersionInfo info,
+        bool allowInstall,
+        bool isFavorite = false)
         => new(
             info,
             allowInstall ? InstallVersionAsync : null,
             LaunchVersionAsync,
             item => OpenVersionFolder(item.Name),
-            allowInstall ? OpenInstallPageAsync : null);
+            allowInstall ? OpenInstallPageAsync : null,
+            allowInstall ? null : ToggleFavorite,
+            isFavorite);
 
     /// <summary>
     /// 打开“选择模组加载器”安装页面，并自动加载默认加载器（Fabric）的可用版本与 Fabric API 推荐版本。
@@ -1547,6 +1898,10 @@ public sealed class MainWindowViewModel : ViewModelBase
         InstallTargetVersion = item;
         StatusIsError = false;
 
+        // 每次从下载页进入安装页都重新生成默认实例名，避免沿用上一个版本的名称。
+        _autoInstallName = null;
+        ApplyDefaultInstallName(ModLoaderKind.Fabric, force: true);
+
         // 先切到安装页，让用户马上看到界面（加载器版本与 Fabric API 在后台查询）。
         CurrentPageIndex = 3;
         StatusMessage = $"请选择与 {item.Name} 一起安装的模组加载器";
@@ -1556,12 +1911,96 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 根据原版版本与加载器生成默认实例名；用户手动改过名称时不覆盖。
+    /// </summary>
+    /// <param name="kind">加载器类型。</param>
+    /// <param name="force">true 表示强制重置为默认名称（进入安装页时使用）。</param>
+    private void ApplyDefaultInstallName(ModLoaderKind kind, bool force = false)
+    {
+        var defaultName = BuildDefaultInstallName(kind);
+
+        // 只有当前名称为空、仍然是上次自动生成的值、或强制重置时才更新，
+        // 避免用户手动改名后，切换加载器又把输入覆盖掉。
+        if (force ||
+            string.IsNullOrWhiteSpace(_installVersionName) ||
+            string.Equals(_installVersionName, _autoInstallName, StringComparison.Ordinal))
+        {
+            InstallVersionName = defaultName;
+            _autoInstallName = defaultName;
+        }
+    }
+
+    /// <summary>生成默认实例名，例如 1.20.1-fabric、1.20.1-forge。</summary>
+    private string BuildDefaultInstallName(ModLoaderKind kind)
+    {
+        var version = InstallTargetVersionName;
+
+        return kind switch
+        {
+            ModLoaderKind.Fabric => $"{version}-fabric",
+            ModLoaderKind.Quilt => $"{version}-quilt",
+            ModLoaderKind.Forge => $"{version}-forge",
+            ModLoaderKind.NeoForge => $"{version}-neoforge",
+            _ => version,
+        };
+    }
+
+    /// <summary>
+    /// 校验版本名称：非空、不含非法字符、不与 versions 下已有实例重名。
+    /// </summary>
+    private void ValidateInstallVersionName()
+    {
+        var name = (_installVersionName ?? string.Empty).Trim();
+        string error;
+
+        if (name.Length == 0)
+        {
+            error = "版本名称不能为空";
+        }
+        else if (name.IndexOfAny(InvalidInstallVersionChars) >= 0)
+        {
+            error = "版本名称不能包含 \\ / : * ? \" < > |";
+        }
+        else if (!IsVanillaLoaderSelected &&
+                 string.Equals(name, InstallTargetVersionName, PathComparison))
+        {
+            // 加载器安装会先把纯原版装到 versions/<原版号>；实例名不能占用这个目录。
+            error = "该版本名称已存在，请换一个名字";
+        }
+        else if (name is "." or "..")
+        {
+            error = "版本名称无效";
+        }
+        else
+        {
+            try
+            {
+                var directory = _minecraftService.GetVersionDirectory(name);
+                error = Directory.Exists(directory) || File.Exists(directory)
+                    ? "该版本名称已存在，请换一个名字"
+                    : string.Empty;
+            }
+            catch (Exception)
+            {
+                error = "版本名称无效";
+            }
+        }
+
+        InstallNameError = error;
+        IsInstallNameValid = error.Length == 0;
+    }
+
+    /// <summary>
     /// 选择加载器类型，并加载该类型在目标 Minecraft 版本下的可用版本列表。
     /// </summary>
     /// <param name="kind">加载器类型。</param>
     private async Task SelectLoaderAsync(ModLoaderKind kind)
     {
         SelectedLoaderKind = kind;
+        ApplyDefaultInstallName(kind);
+
+        // 加载器类型变化会影响“不能占用原版目录”的校验，即使名称没变也要重新校验。
+        ValidateInstallVersionName();
 
         // 即使类型没有变化（例如首次打开页面默认就是 Fabric），也要同步卡片选中状态。
         foreach (var option in LoaderOptions)
@@ -1726,6 +2165,16 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        var installName = (InstallVersionName ?? string.Empty).Trim();
+        if (!IsInstallNameValid)
+        {
+            StatusIsError = true;
+            StatusMessage = string.IsNullOrWhiteSpace(InstallNameError)
+                ? "请填写有效的版本名称"
+                : InstallNameError;
+            return;
+        }
+
         SaveSettings();
 
         _activeCts?.Dispose();
@@ -1741,6 +2190,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         target.StatusText = "安装中…";
         InstallPercent = 0;
         InstallSizeText = string.Empty;
+        InstallSpeedText = string.Empty;
         InstallFileText = string.Empty;
         InstallStageText = SelectedLoaderKind == ModLoaderKind.Vanilla
             ? $"正在安装 {minecraftVersion}"
@@ -1749,28 +2199,19 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         try
         {
-            string installedVersionName;
-
-            if (SelectedLoaderKind == ModLoaderKind.Vanilla)
-            {
-                await _minecraftService
-                    .InstallAsync(minecraftVersion, _installProgress, cancellationToken)
-                    .ConfigureAwait(true);
-
-                installedVersionName = minecraftVersion;
-            }
-            else
-            {
-                // 安装加载器（内部会先补全原版文件，再生成加载器版本并补全其库文件）。
-                installedVersionName = await _minecraftService
-                    .InstallModLoaderAsync(
-                        SelectedLoaderKind,
-                        minecraftVersion,
-                        SelectedLoaderVersion?.Version,
-                        _installProgress,
-                        cancellationToken)
-                    .ConfigureAwait(true);
-            }
+            // 原版与加载器都走同一个入口：服务内部负责在安装完成后应用自定义名称，
+            // 原版会复制实例，加载器版本则移动/重命名目录。
+            var installedVersionName = await _minecraftService
+                .InstallModLoaderAsync(
+                    SelectedLoaderKind,
+                    minecraftVersion,
+                    SelectedLoaderKind == ModLoaderKind.Vanilla
+                        ? null
+                        : SelectedLoaderVersion?.Version,
+                    installName,
+                    _installProgress,
+                    cancellationToken)
+                .ConfigureAwait(true);
 
             // 可选：一起下载 Fabric API 到该版本的 mods 文件夹。
             var fabricApiRelease = _recommendedFabricApi;
@@ -1799,7 +2240,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             // 刷新列表，并把新版本设为当前选中版本。
             await RefreshLocalVersionsAsync().ConfigureAwait(true);
 
-            var installedItem = LocalVersions.FirstOrDefault(v =>
+            var installedItem = GetAllLocalVersions().FirstOrDefault(v =>
                 string.Equals(v.Name, installedVersionName, StringComparison.OrdinalIgnoreCase));
             if (installedItem is not null)
                 SelectedLocalVersion = installedItem;
@@ -1841,6 +2282,162 @@ public sealed class MainWindowViewModel : ViewModelBase
             _activeCts?.Dispose();
             _activeCts = null;
         }
+    }
+
+    /// <summary>
+    /// 拖入的文件不是 .zip / .mrpack 时给出提示。
+    /// </summary>
+    public void NotifyUnsupportedModpackDrop()
+    {
+        StatusIsError = true;
+        StatusMessage = "只支持拖入 .zip 或 .mrpack 整合包";
+    }
+
+    /// <summary>
+    /// 校验整合包实例名（供命名弹窗调用）。返回 null 表示有效。
+    /// </summary>
+    /// <param name="name">用户输入的实例名。</param>
+    public string? ValidateModpackInstanceName(string name)
+        => ModpackInstallService.ValidateInstanceName(name, _minecraftService.VersionsDirectory);
+
+    /// <summary>
+    /// 从拖拽进来的整合包安装一个新的本地实例。
+    /// 解析、版本安装、并发下载和 overrides 覆盖全部由 <see cref="ModpackInstallService"/> 完成。
+    /// </summary>
+    /// <param name="archivePath">整合包文件路径。</param>
+    /// <param name="instanceName">用户确认后的实例名称。</param>
+    public async Task InstallModpackAsync(string archivePath, string instanceName)
+    {
+        if (IsInstalling)
+        {
+            StatusIsError = true;
+            StatusMessage = "已有安装任务正在进行，请等待完成或先取消";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(archivePath) || !File.Exists(archivePath))
+        {
+            StatusIsError = true;
+            StatusMessage = "找不到整合包文件，请重新拖入";
+            return;
+        }
+
+        // 与本地列表刷新保持一致：先把设置页里的目录同步给核心服务，
+        // 避免用户刚改过 versions 目录就拖入整合包时仍装到旧目录。
+        if (!string.Equals(_minecraftService.GameDirectory, GameDirectory, PathComparison))
+            _minecraftService.UseGameDirectory(GameDirectory);
+        _minecraftService.UseVersionsDirectory(VersionsDirectory);
+
+        var name = (instanceName ?? string.Empty).Trim();
+        var nameError = ValidateModpackInstanceName(name);
+        if (nameError is not null)
+        {
+            StatusIsError = true;
+            StatusMessage = nameError;
+            return;
+        }
+
+        _activeCts?.Dispose();
+        _activeCts = new CancellationTokenSource();
+        var cancellationToken = _activeCts.Token;
+
+        IsInstalling = true;
+        StatusIsError = false;
+        InstallPercent = 0;
+        InstallSizeText = string.Empty;
+        InstallSpeedText = string.Empty;
+        InstallFileText = Path.GetFileName(archivePath);
+        InstallStageText = "正在解析整合包…";
+        StatusMessage = InstallStageText;
+
+        try
+        {
+            // 让本次安装使用设置页当前填写、但可能还没点“保存”的 CurseForge Key。
+            _settings.CurseForgeApiKey = CurseForgeApiKey;
+            var config = ModConfig.FromSettings(_settings);
+
+            using var installer = new ModpackInstallService(_minecraftService, config);
+            installer.LogWritten += AppendAppLog;
+
+            var progress = new UiProgress<ModpackInstallProgress>(OnModpackInstallProgressChanged);
+            var result = await installer
+                .InstallAsync(archivePath, name, progress, cancellationToken)
+                .ConfigureAwait(true);
+
+            await RefreshLocalVersionsAsync().ConfigureAwait(true);
+
+            var installedItem = GetAllLocalVersions().FirstOrDefault(item =>
+                string.Equals(item.Name, result.InstanceName, PathComparison));
+            if (installedItem is not null)
+                SelectedLocalVersion = installedItem;
+
+            foreach (var online in OnlineVersions.Where(item =>
+                         string.Equals(item.Name, result.MinecraftVersion, PathComparison)))
+            {
+                online.IsInstalled = true;
+            }
+
+            var loaderText = result.LoaderKind == ModLoaderKind.Vanilla
+                ? "原版"
+                : result.LoaderKind.ToString();
+            var loaderVersionText = string.IsNullOrWhiteSpace(result.LoaderVersion)
+                ? string.Empty
+                : " " + result.LoaderVersion;
+
+            StatusIsError = false;
+            StatusMessage = $"{result.InstanceName} 安装完成：" +
+                            $"{result.MinecraftVersion} + {loaderText}{loaderVersionText}，" +
+                            $"已下载 {result.DownloadedFiles} 个文件，覆盖 {result.OverridesCopied} 个文件";
+
+            InstallStageText = "整合包安装完成";
+            InstallPercent = 100;
+            InstallFileText = string.Empty;
+            CurrentPageIndex = 0;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusIsError = false;
+            StatusMessage = "已取消整合包安装";
+            InstallStageText = "已取消整合包安装";
+        }
+        catch (Exception ex)
+        {
+            StatusIsError = true;
+            StatusMessage = $"整合包安装失败：{ex.Message}";
+            InstallStageText = "整合包安装失败";
+        }
+        finally
+        {
+            IsInstalling = false;
+            InstallPercent = 0;
+            InstallSizeText = string.Empty;
+            InstallSpeedText = string.Empty;
+            InstallFileText = string.Empty;
+            _activeCts?.Dispose();
+            _activeCts = null;
+        }
+    }
+
+    /// <summary>
+    /// 整合包安装进度 → 全局状态栏进度。
+    /// </summary>
+    private void OnModpackInstallProgressChanged(ModpackInstallProgress progress)
+    {
+        // 进度回调来自后台，允许只前进不后退，避免少量迟到的 CmlLib 进度把进度条拉回去。
+        InstallPercent = Math.Max(
+            InstallPercent,
+            Math.Round(Math.Clamp(progress.Percent, 0d, 100d), 1));
+
+        if (!string.IsNullOrWhiteSpace(progress.Stage))
+            InstallStageText = progress.Stage;
+
+        InstallFileText = progress.CurrentFile ?? string.Empty;
+        InstallSpeedText = string.Empty;
+
+        if (progress.TotalFiles > 0)
+            InstallSizeText = $"{progress.CompletedFiles} / {progress.TotalFiles} 个文件";
+        else
+            InstallSizeText = string.Empty;
     }
 
     /// <summary>
@@ -1896,6 +2493,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         InstallPercent = 0;
         InstallStageText = $"正在安装 {item.Name}";
         InstallSizeText = string.Empty;
+        InstallSpeedText = string.Empty;
         InstallFileText = string.Empty;
         StatusMessage = $"开始下载 {item.Name} …";
 
@@ -1914,7 +2512,9 @@ public sealed class MainWindowViewModel : ViewModelBase
                 online.IsInstalled = true;
 
             await RefreshLocalVersionsAsync().ConfigureAwait(true);
-            SelectedLocalVersion = LocalVersions.FirstOrDefault(v => v.Name == item.Name) ?? SelectedLocalVersion;
+            SelectedLocalVersion = GetAllLocalVersions()
+                                       .FirstOrDefault(v => v.Name == item.Name)
+                                   ?? SelectedLocalVersion;
         }
         catch (OperationCanceledException)
         {
@@ -2010,6 +2610,7 @@ public sealed class MainWindowViewModel : ViewModelBase
                 IsInstalling = true;
                 InstallPercent = 0;
                 InstallSizeText = string.Empty;
+                InstallSpeedText = string.Empty;
                 InstallFileText = string.Empty;
                 InstallStageText = $"正在校验 {item.Name} 的文件与 Java 运行时";
                 item.StatusText = "校验文件…";
@@ -2026,9 +2627,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             item.StatusText = "解析 Java…";
             StatusMessage = $"正在解析 {item.Name} 所需的 Java 运行时…";
 
-            var javaRuntime = await _minecraftService
-                .ResolveJavaRuntimeAsync(item.Name, JavaPathForLaunch, cancellationToken)
+            var javaRuntime = await ResolveJavaRuntimeForLaunchAsync(item.Name, cancellationToken)
                 .ConfigureAwait(true);
+
+            // 自动下载失败且用户选择手动下载时，不再继续启动。
+            if (javaRuntime is null)
+                return;
 
             // ---------- 第 4 步：构建并启动游戏进程 ----------
             var request = new LaunchRequest
@@ -2063,13 +2667,20 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 StatusIsError = true;
                 var javaHint = OperatingSystem.IsWindows()
-                    ? "请查看下方游戏日志；若提示 javaw 或 jvm.dll 相关错误，说明 Java 运行时已损坏，" +
-                      "可勾选“启动前校验并补全游戏文件”后重试，或在设置中指定其他 Java。"
-                    : "请查看下方游戏日志；常见原因是 Java 路径无效、Java 版本过低或运行时缺少依赖，" +
-                      "可以在设置中指定其他 Java 后重试。";
+                    ? "常见原因：Java 版本不匹配、Java 运行时损坏或游戏文件缺失。"
+                    : "常见原因：Java 路径无效、Java 版本过低或运行时缺少依赖。";
 
                 StatusMessage =
                     $"启动失败：游戏进程在 {runningSeconds:0.0} 秒后退出（退出码 {exitCode}）。" + javaHint;
+
+                AppendAppLog(
+                    $"[DPL] 游戏启动后 {runningSeconds:0.0} 秒退出，退出码 {exitCode}。{javaHint}");
+
+                await ShowLaunchFailureDialogAsync(
+                        "游戏启动失败",
+                        $"游戏启动后很快就退出了。\n\n{javaHint}\n\n" +
+                        "点击“查看详细日志”可打开 latest.log 所在文件夹，把日志提供给开发者。")
+                    .ConfigureAwait(true);
             }
             else
             {
@@ -2085,6 +2696,13 @@ public sealed class MainWindowViewModel : ViewModelBase
             StatusIsError = true;
             StatusMessage = $"启动 {item.Name} 失败：{ex.Message}";
             AppendAppLog($"[DPL] 启动失败：{ex.Message}");
+
+            await ShowLaunchFailureDialogAsync(
+                    "游戏启动失败",
+                    $"启动 {item.Name} 时发生错误：\n{ex.Message}\n\n" +
+                    "常见原因：Java 版本不匹配、Java 路径无效或游戏文件损坏。\n" +
+                    "点击“查看详细日志”可打开 latest.log 所在文件夹。")
+                .ConfigureAwait(true);
         }
         finally
         {
@@ -2108,6 +2726,165 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         StatusMessage = "正在取消当前任务…";
         _activeCts.Cancel();
+    }
+
+    /// <summary>
+    /// 解析启动所需 Java；缺少匹配版本时按设置自动下载，
+    /// 全部镜像失败后提示用户前往 Oracle 手动下载。
+    /// </summary>
+    private async Task<JavaRuntimeInfo?> ResolveJavaRuntimeForLaunchAsync(
+        string versionName,
+        CancellationToken cancellationToken)
+    {
+        // 用户明确指定了 Java 路径时，保持原行为（即使版本偏低也按用户意图使用）。
+        if (!string.IsNullOrWhiteSpace(JavaPathForLaunch))
+        {
+            return await _minecraftService
+                .ResolveJavaRuntimeAsync(versionName, JavaPathForLaunch, cancellationToken)
+                .ConfigureAwait(true);
+        }
+
+        var requiredMajor = await _minecraftService
+            .GetRequiredJavaMajorVersionAsync(versionName, cancellationToken)
+            .ConfigureAwait(true);
+
+        if (requiredMajor <= 0)
+        {
+            return await _minecraftService
+                .ResolveJavaRuntimeAsync(versionName, null, cancellationToken)
+                .ConfigureAwait(true);
+        }
+
+        // 先复用现有解析链路：它会检查本机、CmlLib 自带 runtime 和启动器运行库。
+        try
+        {
+            var existing = await _minecraftService
+                .ResolveJavaRuntimeAsync(versionName, null, cancellationToken)
+                .ConfigureAwait(true);
+
+            if (existing is not null)
+            {
+                AppendAppLog($"[Java] 使用 Java {existing.MajorVersion}：{existing.Path}");
+                return existing;
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // 没有匹配版本，继续自动下载。
+        }
+
+        var compatible = await _javaRuntimeManager
+            .FindCompatibleAsync(requiredMajor, cancellationToken)
+            .ConfigureAwait(true);
+
+        if (compatible is not null)
+        {
+            AppendAppLog($"[Java] 使用 Java {compatible.MajorVersion}：{compatible.Path}");
+            return compatible;
+        }
+
+        if (!AutoDownloadJava)
+        {
+            await PromptManualJavaDownloadAsync(
+                    requiredMajor,
+                    "设置中已关闭“自动下载缺失的 Java”")
+                .ConfigureAwait(true);
+            return null;
+        }
+
+        IsInstalling = true;
+        InstallPercent = 0;
+        InstallSizeText = string.Empty;
+        InstallSpeedText = string.Empty;
+        InstallFileText = string.Empty;
+        InstallStageText = $"正在下载 Java {requiredMajor} 运行时…";
+        StatusMessage = InstallStageText;
+        StatusIsError = false;
+
+        try
+        {
+            var installed = await _javaRuntimeManager
+                .InstallAsync(requiredMajor, _installProgress, cancellationToken)
+                .ConfigureAwait(true);
+
+            await RefreshJavaCandidatesAsync().ConfigureAwait(true);
+            InstallStageText = $"Java {requiredMajor} 运行时已就绪";
+            StatusMessage = InstallStageText;
+            AppendAppLog($"[Java] 已安装 Java {installed.MajorVersion}：{installed.Path}");
+            return installed;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            AppendAppLog($"[Java] 自动下载失败：{ex.Message}");
+            await PromptManualJavaDownloadAsync(requiredMajor, ex.Message).ConfigureAwait(true);
+            return null;
+        }
+        finally
+        {
+            IsInstalling = false;
+            InstallPercent = 0;
+            InstallSpeedText = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// 自动下载全部失败后，询问是否打开 Oracle 官方下载页。
+    /// </summary>
+    private async Task PromptManualJavaDownloadAsync(int requiredMajor, string reason)
+    {
+        StatusIsError = true;
+        StatusMessage = $"自动下载 Java {requiredMajor} 失败：{reason}";
+
+        var owner = (Window?)null;
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            owner = desktop.MainWindow;
+
+        if (owner is null)
+            return;
+
+        var confirmed = await ConfirmDialog.ShowAsync(
+                owner,
+                "Java 自动下载失败",
+                $"自动下载 Java {requiredMajor} 运行时失败。\n\n{reason}\n\n" +
+                "是否前往 Oracle 官网手动下载？\n下载完成后，请在设置中手动指定 java.exe 路径。",
+                "前往下载",
+                "取消")
+            .ConfigureAwait(true);
+
+        if (!confirmed)
+        {
+            StatusMessage = $"未安装 Java {requiredMajor}，已取消启动";
+            return;
+        }
+
+        SystemIntegration.OpenUrl("https://www.oracle.com/java/technologies/downloads/");
+        StatusMessage =
+            "已打开 Oracle Java 下载页。下载并安装后，请在“设置”中手动指定 java.exe 路径。";
+        AppendAppLog("[Java] 已打开 Oracle 官方下载页");
+    }
+
+    /// <summary>
+    /// 启动失败弹窗：提供“查看详细日志”入口，直接打开 latest.log 所在文件夹。
+    /// </summary>
+    private async Task ShowLaunchFailureDialogAsync(string title, string message)
+    {
+        var owner = (Window?)null;
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            owner = desktop.MainWindow;
+
+        if (owner is null)
+            return;
+
+        var openLogs = await ConfirmDialog
+            .ShowAsync(owner, title, message, "查看详细日志", "关闭")
+            .ConfigureAwait(true);
+
+        if (openLogs)
+            OpenLogsFolder();
     }
 
     /// <summary>
@@ -2166,6 +2943,26 @@ public sealed class MainWindowViewModel : ViewModelBase
         SelectedJava = JavaCandidates.FirstOrDefault(c =>
             string.Equals(c.Path, javaPath, PathComparison));
         StatusMessage = $"已选择 Java：{javaPath}";
+    }
+
+    /// <summary>
+    /// 选择新的 Java 运行库存储目录。
+    /// </summary>
+    private async Task BrowseJavaRuntimeDirectoryAsync()
+    {
+        if (FilePicker is null)
+            return;
+
+        var directory = await FilePicker
+            .PickFolderAsync("选择 Java 运行库存储位置")
+            .ConfigureAwait(true);
+
+        if (string.IsNullOrWhiteSpace(directory))
+            return;
+
+        JavaRuntimeDirectory = directory;
+        SaveSettings();
+        StatusMessage = $"Java 运行库位置已设置为：{directory}";
     }
 
     /// <summary>
@@ -2349,6 +3146,28 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         InstallSizeText = info.SizeText;
 
+        // 优先使用下载器直接给出的速度；CmlLib 不提供速度时按字节增量计算。
+        var speedText = info.SpeedText;
+        var now = DateTime.UtcNow;
+        var elapsed = (now - _lastInstallSpeedAt).TotalSeconds;
+        if (info.ProgressedBytes < _lastInstallBytes)
+            _lastInstallBytes = 0;
+
+        if (string.IsNullOrEmpty(speedText) && info.ProgressedBytes > 0 && elapsed >= 0.25)
+        {
+            var delta = info.ProgressedBytes - _lastInstallBytes;
+            if (delta > 0)
+                speedText = DownloadSpeedFormatter.Format(delta / elapsed);
+        }
+
+        if (info.ProgressedBytes > 0 && elapsed >= 0.25)
+        {
+            _lastInstallBytes = info.ProgressedBytes;
+            _lastInstallSpeedAt = now;
+        }
+
+        InstallSpeedText = speedText;
+
         if (string.IsNullOrWhiteSpace(info.CurrentFile))
         {
             InstallFileText = info.TotalTasks > 0
@@ -2379,6 +3198,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         if (string.IsNullOrEmpty(line))
             return;
 
+        LauncherLogWriter.Write("[APP] " + line);
+
         Dispatcher.UIThread.Post(() =>
         {
             AppLogs.Add(line);
@@ -2394,6 +3215,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         if (string.IsNullOrEmpty(line))
             return;
+
+        LauncherLogWriter.Write("[GAME] " + line);
 
         Dispatcher.UIThread.Post(() =>
         {

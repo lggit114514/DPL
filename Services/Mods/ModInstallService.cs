@@ -106,6 +106,7 @@ public sealed class ModInstallService
                 // 单个文件内部的进度增量（多文件并行时按增量累加到整体进度）。
                 var sync = new object();
                 long lastWritten = 0;
+                var lastSpeed = new double[1];
 
                 var result = await _http.DownloadFileAsync(
                     primaryUrls,
@@ -123,10 +124,17 @@ public sealed class ModInstallService
                         }
 
                         ReportProgress(progress, fileName, fileIndex, files.Count, Current(),
-                            totalBytes > 0 ? totalBytes : files.Count, stage);
+                            totalBytes > 0 ? totalBytes : files.Count, stage,
+                            Volatile.Read(ref lastSpeed[0]));
                     },
                     cancellationToken,
-                    file.Version.FileSize).ConfigureAwait(false);
+                    file.Version.FileSize,
+                    speed =>
+                    {
+                        Volatile.Write(ref lastSpeed[0], speed);
+                        ReportProgress(progress, fileName, fileIndex, files.Count, Current(),
+                            totalBytes > 0 ? totalBytes : files.Count, stage, speed);
+                    }).ConfigureAwait(false);
 
                 saved.Add(result.Path);
                 Log($"{fileName} 下载完成{(result.UsedFallback ? "（回退官方源）" : "（MCIM 镜像）")}");
@@ -180,10 +188,14 @@ public sealed class ModInstallService
         int fileCount,
         long downloadedBytes,
         long totalBytes,
-        string stage)
+        string stage,
+        double bytesPerSecond = 0)
     {
         progress?.Report(new ModDownloadProgress(
-            fileName, fileIndex, fileCount, downloadedBytes, totalBytes, stage));
+            fileName, fileIndex, fileCount, downloadedBytes, totalBytes, stage)
+        {
+            SpeedText = DownloadSpeedFormatter.Format(bytesPerSecond),
+        });
     }
 
     /// <summary>

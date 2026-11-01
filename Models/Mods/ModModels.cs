@@ -182,6 +182,9 @@ public sealed record ModDownloadProgress(
     long TotalBytes,
     string Stage)
 {
+    /// <summary>当前下载速度的显示文本，例如 <c>12.5 MB/s</c>。</summary>
+    public string SpeedText { get; init; } = string.Empty;
+
     /// <summary>整体进度（0~1）。</summary>
     public double Ratio => TotalBytes > 0
         ? Math.Clamp((double)DownloadedBytes / TotalBytes, 0d, 1d)

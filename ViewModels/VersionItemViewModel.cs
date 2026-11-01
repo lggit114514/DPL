@@ -11,6 +11,7 @@ public sealed class VersionItemViewModel : ViewModelBase
 {
     private bool _isInstalled;
     private bool _isBusy;
+    private bool _isFavorite;
     private string _statusText = string.Empty;
 
     /// <summary>
@@ -21,17 +22,22 @@ public sealed class VersionItemViewModel : ViewModelBase
     /// <param name="launchHandler">启动操作；为 null 表示该列表不允许启动。</param>
     /// <param name="openFolderHandler">打开该版本文件夹的操作；为 null 表示不支持。</param>
     /// <param name="openInstallHandler">打开“安装/模组加载器选择”页面的操作；为 null 表示不支持。</param>
+    /// <param name="toggleFavoriteHandler">切换收藏状态的操作；为 null 表示该条目不可收藏（例如在线列表）。</param>
+    /// <param name="isFavorite">初始是否已收藏。</param>
     public VersionItemViewModel(
         MinecraftVersionInfo info,
         Func<VersionItemViewModel, Task>? installHandler,
         Func<VersionItemViewModel, Task>? launchHandler,
         Action<VersionItemViewModel>? openFolderHandler = null,
-        Func<VersionItemViewModel, Task>? openInstallHandler = null)
+        Func<VersionItemViewModel, Task>? openInstallHandler = null,
+        Action<VersionItemViewModel>? toggleFavoriteHandler = null,
+        bool isFavorite = false)
     {
         Name = info.Name;
         Kind = info.Kind;
         ReleaseTime = info.ReleaseTime;
         _isInstalled = info.IsInstalled;
+        _isFavorite = isFavorite;
 
         TypeText = Kind switch
         {
@@ -54,6 +60,11 @@ public sealed class VersionItemViewModel : ViewModelBase
             _ => openFolderHandler?.Invoke(this));
         OpenInstallCommand = new AsyncRelayCommand(
             _ => openInstallHandler is null ? Task.CompletedTask : openInstallHandler(this));
+        ToggleFavoriteCommand = new RelayCommand(
+            _ => toggleFavoriteHandler?.Invoke(this),
+            _ => toggleFavoriteHandler is not null);
+
+        CanFavorite = toggleFavoriteHandler is not null;
     }
 
     /// <summary>版本名称。</summary>
@@ -93,6 +104,23 @@ public sealed class VersionItemViewModel : ViewModelBase
 
     /// <summary>是否支持打开“安装/模组加载器选择”页面。</summary>
     public bool CanOpenInstall { get; }
+
+    /// <summary>该条目是否支持收藏（只有本地版本列表支持）。</summary>
+    public bool CanFavorite { get; }
+
+    /// <summary>该版本是否已收藏。</summary>
+    public bool IsFavorite
+    {
+        get => _isFavorite;
+        set
+        {
+            if (SetProperty(ref _isFavorite, value))
+                OnPropertyChanged(nameof(FavoriteToolTip));
+        }
+    }
+
+    /// <summary>爱心按钮的提示文字。</summary>
+    public string FavoriteToolTip => IsFavorite ? "取消收藏" : "收藏此版本";
 
     /// <summary>该版本是否已安装到本地游戏目录。</summary>
     public bool IsInstalled
@@ -157,4 +185,7 @@ public sealed class VersionItemViewModel : ViewModelBase
 
     /// <summary>打开“安装/模组加载器选择”页面的命令。</summary>
     public ICommand OpenInstallCommand { get; }
+
+    /// <summary>切换收藏状态的命令。</summary>
+    public ICommand ToggleFavoriteCommand { get; }
 }

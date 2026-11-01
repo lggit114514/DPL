@@ -24,6 +24,7 @@ public partial class App : Application
             // 组合根：在这里创建服务与 ViewModel，并完成依赖注入。
             // 启动器改名为 DPL 后，先尝试把旧目录（LGLun）里的设置 / 账号 / 登录缓存迁移过来。
             Services.AppPaths.MigrateLegacyData();
+            Services.LauncherLogWriter.StartSession();
 
             var settingsService = new SettingsService();
             var settings = settingsService.Load();

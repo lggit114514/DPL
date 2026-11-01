@@ -137,12 +137,15 @@
     </Grid>
 
     <!-- ==================== 底部进度 ==================== -->
-    <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,12,0,0">
+    <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,12,0,0">
       <TextBlock Text="进度" Classes="fieldLabel" VerticalAlignment="Center" Margin="0,0,10,0" />
       <ProgressBar Grid.Column="1" Value="{Binding ProgressPercent}" Maximum="100"
                    Height="6" VerticalAlignment="Center" />
-      <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="10.5" Classes="secondary"
-                 Margin="10,0,0,0" VerticalAlignment="Center" MaxWidth="420" TextWrapping="Wrap" />
+      <TextBlock Grid.Column="2" Text="{Binding SpeedText}" FontSize="10.5" Classes="accent"
+                 Margin="10,0,0,0" VerticalAlignment="Center" MinWidth="76"
+                 ToolTip.Tip="实时下载速度" />
+      <TextBlock Grid.Column="3" Text="{Binding StatusText}" FontSize="10.5" Classes="secondary"
+                 Margin="10,0,0,0" VerticalAlignment="Center" MaxWidth="360" TextWrapping="Wrap" />
     </Grid>
   </Grid>
 </UserControl>

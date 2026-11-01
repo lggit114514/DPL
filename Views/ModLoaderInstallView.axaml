@@ -27,6 +27,24 @@
                   HorizontalScrollBarVisibility="Disabled">
       <StackPanel Spacing="14" Margin="0,0,4,0">
 
+        <!-- 自定义版本名称 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="8">
+            <TextBlock Text="版本名称（实例名）" Classes="sectionTitle" />
+            <TextBlock Text="会作为 versions 下的文件夹名；同一个原版可以安装多个不同名称的实例。"
+                       FontSize="11" Classes="secondary" TextWrapping="Wrap" />
+            <TextBox Text="{Binding InstallVersionName, Mode=TwoWay}"
+                     Watermark="例如 1.20.1-fabric"
+                     IsEnabled="{Binding !IsInstalling}" />
+            <TextBlock Text="{Binding InstallNameError}"
+                       Foreground="{DynamicResource DangerBrush}" FontWeight="SemiBold"
+                       FontSize="10.5" TextWrapping="Wrap"
+                       IsVisible="{Binding HasInstallNameError}" />
+          </StackPanel>
+        </Border>
+
         <!-- 加载器选择 -->
         <TextBlock Text="选择要一起安装的模组加载器" Classes="sectionTitle" />
 
@@ -84,10 +102,21 @@
               <ComboBox ItemsSource="{Binding LoaderVersions}"
                         SelectedItem="{Binding SelectedLoaderVersion, Mode=TwoWay}"
                         PlaceholderText="正在查询可用版本…"
-                        IsEnabled="{Binding !IsLoaderLoading}">
+                        IsEnabled="{Binding !IsLoaderLoading}"
+                        MaxDropDownHeight="600"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch">
+                <ComboBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <!-- 关闭虚拟化，完整渲染所有版本项 -->
+                    <StackPanel />
+                  </ItemsPanelTemplate>
+                </ComboBox.ItemsPanel>
                 <ComboBox.ItemTemplate>
                   <DataTemplate x:DataType="models:ModLoaderVersionInfo">
-                    <TextBlock Text="{Binding DisplayText}" FontSize="12" />
+                    <TextBlock Text="{Binding DisplayText}" FontSize="12"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>

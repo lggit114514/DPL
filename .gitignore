@@ -10,4 +10,5 @@ publish/
 artifacts/
 Thumbs.db
 *.log
+*.zip
 appsettings.json

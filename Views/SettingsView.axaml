@@ -172,10 +172,13 @@
                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
             <ComboBox ItemsSource="{Binding JavaCandidates}"
                       SelectedItem="{Binding SelectedJava}"
-                      PlaceholderText="自动检测">
+                      PlaceholderText="自动检测"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="models:JavaCandidate">
                   <TextBlock Text="{Binding DisplayName}" FontSize="11.5"
+                             TextWrapping="NoWrap"
                              TextTrimming="CharacterEllipsis" />
                 </DataTemplate>
               </ComboBox.ItemTemplate>
@@ -190,6 +193,20 @@
                        TextWrapping="Wrap" />
             <TextBlock Text="{Binding JavaDetectedText}" Classes="muted" FontSize="10.5"
                        TextWrapping="Wrap" />
+
+            <CheckBox Content="自动下载缺失的 Java（推荐）"
+                      IsChecked="{Binding AutoDownloadJava, Mode=TwoWay}" />
+
+            <TextBlock Text="Java 运行库存储位置" Classes="fieldLabel" Margin="0,4,0,0" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Text="{Binding JavaRuntimeDirectory, Mode=TwoWay}"
+                       Watermark="默认：%AppData%\DPL\runtime" FontSize="11.5" />
+              <Button Grid.Column="1" Theme="{StaticResource GhostButtonTheme}" Content="浏览文件夹…"
+                      Command="{Binding BrowseJavaRuntimeDirectoryCommand}"
+                      Margin="8,0,0,0" Padding="10,6" FontSize="10.5" />
+            </Grid>
+            <TextBlock Text="自动下载的 Java 会解压到该目录下的 java-&lt;主版本&gt; 文件夹；可改到 D 盘等其他位置。"
+                       Classes="muted" FontSize="10.5" TextWrapping="Wrap" />
           </StackPanel>
         </Border>
 
@@ -207,6 +224,23 @@
                        Classes="muted" FontSize="11" />
             <Slider Minimum="1024" Maximum="16384" TickFrequency="512" IsSnapToTickEnabled="True"
                     Value="{Binding MaxMemoryMbSlider}" Margin="0,4,0,0" />
+          </StackPanel>
+        </Border>
+
+        <!-- 下载线程数 -->
+        <Border Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="18">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="下载线程数" Classes="sectionTitle" />
+              <TextBlock Grid.Column="1" Text="{Binding DownloadThreadText}" FontSize="12.5"
+                         FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+            </Grid>
+            <TextBlock Text="1-32 线程；大文件会按该线程数分片并行下载，网络不稳定时建议降低"
+                       Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            <Slider Minimum="1" Maximum="32" TickFrequency="1" IsSnapToTickEnabled="True"
+                    Value="{Binding DownloadThreadCountSlider, Mode=TwoWay}" Margin="0,4,0,0" />
           </StackPanel>
         </Border>
 
@@ -272,6 +306,12 @@
                        Classes="secondary" FontSize="11.5" TextWrapping="Wrap" />
             <TextBlock Text="开发者: Deepseek V4.1Flash LG_MC114 Hejuxiao"
                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            <Button Theme="{StaticResource GhostButtonTheme}" Content="打开运行日志文件夹"
+                    Command="{Binding OpenLogsFolderCommand}"
+                    HorizontalAlignment="Left" Margin="0,8,0,0"
+                    Padding="14,7" FontSize="11" />
+            <TextBlock Text="如果游戏无法启动，请前往此处获取日志提供给开发者"
+                       Classes="muted" FontSize="10.5" TextWrapping="Wrap" />
           </StackPanel>
         </Border>
       </StackPanel>

@@ -24,6 +24,8 @@
       <SolidColorBrush x:Key="AppBackgroundBrush" Color="#0C0F14" />
       <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#11151B" />
       <SolidColorBrush x:Key="CardBackgroundBrush" Color="#161B23" />
+      <!-- 本地版本列表的“收藏 / 全部”大区块；浅蓝 / 浅粉主题会覆盖成半透明毛玻璃色 -->
+      <SolidColorBrush x:Key="GroupContainerBackground" Color="#121821" />
       <SolidColorBrush x:Key="CardHoverBrush" Color="#1C2330" />
       <SolidColorBrush x:Key="CardSelectedBrush" Color="#15251C" />
       <SolidColorBrush x:Key="InputBackgroundBrush" Color="#12161D" />

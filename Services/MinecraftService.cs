@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
 using CmlLib.Core.Installer.Forge;
@@ -29,6 +32,12 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
     private static readonly StringComparison PathComparison =
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
+    /// <summary>版本名称中不允许出现的字符（跨平台统一限制）。</summary>
+    private static readonly char[] InvalidVersionNameChars =
+    {
+        '\\', '/', ':', '*', '?', '"', '<', '>', '|',
+    };
+
     /// <summary>CmlLib 文件级并行下载数。</summary>
     private const int DownloadParallelism = 32;
 
@@ -37,6 +46,7 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
     private MinecraftLauncher _launcher;
     private string _gameDirectory;
     private string? _customVersionsDirectory;
+    private string? _javaRuntimeDirectory;
 
     /// <summary>
     /// 使用指定游戏目录创建服务实例。
@@ -78,6 +88,48 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
 
         _customVersionsDirectory = normalized;
         Rebuild();
+    }
+
+    /// <inheritdoc />
+    public void UseJavaRuntimeDirectory(string? javaRuntimeDirectory)
+    {
+        try
+        {
+            _javaRuntimeDirectory = string.IsNullOrWhiteSpace(javaRuntimeDirectory)
+                ? null
+                : Path.TrimEndingDirectorySeparator(
+                    Path.GetFullPath(javaRuntimeDirectory.Trim().Trim('"')));
+        }
+        catch (Exception)
+        {
+            // 用户正在输入非法路径时先忽略，保存时仍会保留原始文本。
+            _javaRuntimeDirectory = null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> GetRequiredJavaMajorVersionAsync(
+        string versionName,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var version = await _launcher.GetVersionAsync(versionName, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (int.TryParse(version.JavaVersion?.MajorVersion, out var major) && major > 0)
+                return major;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // 版本 JSON 不可读时使用静态映射兜底。
+        }
+
+        return GuessRequiredJavaMajor(versionName);
     }
 
     /// <inheritdoc />
@@ -305,6 +357,13 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
         if (gameLog is not null)
             wrapper.OutputReceived += (_, line) => gameLog(line);
 
+        // 在真正启动 Java 前记录当前实例目录，供 DPL.LogViewer 精确定位游戏日志。
+        var actualGameDirectory = !string.IsNullOrWhiteSpace(request.InstanceDirectory) &&
+                                  Directory.Exists(request.InstanceDirectory)
+            ? request.InstanceDirectory
+            : _gameDirectory;
+        WriteCurrentGameDirectory(actualGameDirectory);
+
         wrapper.StartWithEvents();
 
         try
@@ -353,6 +412,9 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
         var requiredMajor = int.TryParse(version?.JavaVersion?.MajorVersion, out var parsedMajor)
             ? parsedMajor
             : 0;
+
+        if (requiredMajor <= 0)
+            requiredMajor = GuessRequiredJavaMajor(versionName);
 
         // 按优先级收集候选 Java 路径。
         var candidates = new List<string>();
@@ -438,7 +500,8 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<JavaCandidate> FindJavaCandidates() => JavaLocator.FindCandidates();
+    public IReadOnlyList<JavaCandidate> FindJavaCandidates()
+        => JavaLocator.FindCandidates(_javaRuntimeDirectory);
 
     /// <inheritdoc />
     public bool LooksLikeIsolatedInstance(string versionName)
@@ -782,13 +845,25 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
         ModLoaderKind kind,
         string minecraftVersion,
         string? loaderVersion,
+        string? customVersionName = null,
         IProgress<InstallProgressInfo>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        var requestedName = string.IsNullOrWhiteSpace(customVersionName)
+            ? null
+            : customVersionName.Trim();
+
         if (kind == ModLoaderKind.Vanilla)
         {
             await InstallAsync(minecraftVersion, progress, cancellationToken).ConfigureAwait(false);
-            return minecraftVersion;
+
+            // 原版自定义名称：复制一份原版版本，保留原始 1.x 目录供加载器 inheritsFrom 使用。
+            return ApplyCustomVersionName(
+                minecraftVersion,
+                requestedName,
+                copySource: true,
+                progress,
+                cancellationToken);
         }
 
         var path = _minecraftPath;
@@ -803,6 +878,10 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
 
         // 未指定加载器版本时，让 CmlLib 选择它认为最合适的一个。
         var resolvedLoader = loaderVersion;
+
+        // 记录安装前已有的版本目录：如果 CmlLib 生成的默认版本名已经存在，
+        // 后面不能直接移动它，否则会把用户原有的同名实例弄丢。
+        var existingVersionNames = GetExistingVersionNames();
 
         string versionName;
         try
@@ -979,7 +1058,197 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
             Ratio = 1,
         });
 
-        return versionName;
+        return ApplyCustomVersionName(
+            versionName,
+            requestedName,
+            copySource: existingVersionNames.Contains(versionName),
+            progress,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 读取 versions 下已有的目录名，用于判断 CmlLib 生成的目标名称是否已经存在。
+    /// </summary>
+    private HashSet<string> GetExistingVersionNames()
+    {
+        var names = new HashSet<string>(PathComparer);
+
+        try
+        {
+            foreach (var directory in Directory.EnumerateDirectories(VersionsDirectory))
+                names.Add(Path.GetFileName(directory));
+        }
+        catch (Exception)
+        {
+            // 版本目录暂时不可读时按“没有已有版本”处理，后续目录操作会给出真实错误。
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// 把 CmlLib 生成的版本目录改成用户指定的实例名。
+    /// 加载器版本默认移动目录；如果 CmlLib 的默认名称本来就已经存在，则改为复制，
+    /// 避免把用户原有的同名实例移走。原版版本始终复制，保留作为 inheritsFrom 基础的原版目录。
+    /// </summary>
+    /// <param name="generatedName">CmlLib 生成的版本名。</param>
+    /// <param name="customName">用户指定的名称；为空表示不修改。</param>
+    /// <param name="copySource">true 表示复制（原版），false 表示移动（加载器版本）。</param>
+    /// <param name="progress">安装进度回调。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>最终版本名。</returns>
+    private string ApplyCustomVersionName(
+        string generatedName,
+        string? customName,
+        bool copySource,
+        IProgress<InstallProgressInfo>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(customName) ||
+            string.Equals(generatedName, customName, PathComparison))
+        {
+            return generatedName;
+        }
+
+        ValidateVersionName(customName);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var sourceDirectory = GetVersionDirectory(generatedName);
+        var targetDirectory = GetVersionDirectory(customName);
+
+        if (!Directory.Exists(sourceDirectory))
+            throw new InvalidOperationException($"安装完成但找不到版本目录：{sourceDirectory}");
+
+        if (Directory.Exists(targetDirectory) || File.Exists(targetDirectory))
+            throw new InvalidOperationException($"该版本名称已存在，请换一个名字：{customName}");
+
+        progress?.Report(new InstallProgressInfo
+        {
+            Stage = copySource
+                ? $"正在创建原版实例 {customName}"
+                : $"正在重命名版本为 {customName}",
+            Ratio = 0,
+        });
+
+        if (copySource)
+        {
+            try
+            {
+                CopyDirectory(sourceDirectory, targetDirectory);
+            }
+            catch
+            {
+                TryDeleteDirectory(targetDirectory);
+                throw;
+            }
+        }
+        else
+        {
+            Directory.Move(sourceDirectory, targetDirectory);
+        }
+
+        // 版本 JSON 的文件名和内部的 id 必须一起改成新名称，否则 CmlLib 会找不到该版本。
+        var sourceJsonPath = Path.Combine(targetDirectory, generatedName + ".json");
+        if (!File.Exists(sourceJsonPath))
+        {
+            sourceJsonPath = Directory
+                .EnumerateFiles(targetDirectory, "*.json", SearchOption.TopDirectoryOnly)
+                .FirstOrDefault()
+                ?? throw new InvalidOperationException(
+                    $"安装完成但找不到版本 JSON：{targetDirectory}");
+        }
+
+        var targetJsonPath = Path.Combine(targetDirectory, customName + ".json");
+        if (!string.Equals(sourceJsonPath, targetJsonPath, PathComparison))
+            File.Move(sourceJsonPath, targetJsonPath);
+
+        UpdateVersionJson(targetJsonPath, customName, generatedName);
+
+        // 原版版本目录里还有一个与版本同名的 client jar；加载器版本通常没有。
+        var sourceJarPath = Path.Combine(targetDirectory, generatedName + ".jar");
+        var targetJarPath = Path.Combine(targetDirectory, customName + ".jar");
+        if (File.Exists(sourceJarPath) &&
+            !string.Equals(sourceJarPath, targetJarPath, PathComparison))
+        {
+            File.Move(sourceJarPath, targetJarPath);
+        }
+
+        progress?.Report(new InstallProgressInfo
+        {
+            Stage = $"{customName} 已准备就绪",
+            Ratio = 1,
+        });
+
+        return customName;
+    }
+
+    /// <summary>
+    /// 修改版本 JSON 的 id；如果 jar 字段指向 CmlLib 生成的名称，也一并改成新名称。
+    /// inheritsFrom 保持原样，加载器版本仍然继承未改名的纯原版。
+    /// </summary>
+    private static void UpdateVersionJson(string jsonPath, string customName, string generatedName)
+    {
+        var root = JsonNode.Parse(File.ReadAllText(jsonPath)) as JsonObject
+            ?? throw new InvalidOperationException($"版本 JSON 格式无效：{jsonPath}");
+
+        root["id"] = customName;
+
+        if (root["jar"] is JsonValue jarValue &&
+            jarValue.TryGetValue<string>(out var jarName) &&
+            string.Equals(jarName, generatedName, PathComparison))
+        {
+            root["jar"] = customName;
+        }
+
+        File.WriteAllText(
+            jsonPath,
+            root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    /// <summary>校验版本名称是否可安全用作文件夹名。</summary>
+    private static void ValidateVersionName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new InvalidOperationException("版本名称不能为空");
+
+        if (name.IndexOfAny(InvalidVersionNameChars) >= 0)
+            throw new InvalidOperationException("版本名称不能包含 \\ / : * ? \" < > |");
+
+        if (name is "." or "..")
+            throw new InvalidOperationException("版本名称无效");
+    }
+
+    /// <summary>递归复制目录（用于复制原版实例文件）。</summary>
+    private static void CopyDirectory(string sourceDirectory, string targetDirectory)
+    {
+        Directory.CreateDirectory(targetDirectory);
+
+        foreach (var sourceFile in Directory.EnumerateFiles(
+                     sourceDirectory, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sourceDirectory, sourceFile);
+            var targetFile = Path.Combine(targetDirectory, relativePath);
+            var targetParent = Path.GetDirectoryName(targetFile);
+
+            if (!string.IsNullOrWhiteSpace(targetParent))
+                Directory.CreateDirectory(targetParent);
+
+            File.Copy(sourceFile, targetFile, overwrite: false);
+        }
+    }
+
+    /// <summary>复制失败时尽量清理不完整的实例目录。</summary>
+    private static void TryDeleteDirectory(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+        catch (Exception)
+        {
+            // 清理失败不覆盖原始安装异常。
+        }
     }
 
     /// <summary>
@@ -1005,6 +1274,27 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
 
         foreach (var executable in executables)
             yield return executable;
+    }
+
+    /// <summary>
+    /// 记录当前游戏实例目录，供独立的 DPL.LogViewer 定位 logs/latest.log。
+    /// </summary>
+    /// <param name="gameDirectory">实际作为游戏目录使用的文件夹。</param>
+    private static void WriteCurrentGameDirectory(string gameDirectory)
+    {
+        try
+        {
+            var directory = Path.TrimEndingDirectorySeparator(
+                Path.GetFullPath(gameDirectory.Trim().Trim('"')));
+            var filePath = Path.Combine(AppPaths.RoamingDirectory, "current_game_dir.txt");
+
+            Directory.CreateDirectory(AppPaths.RoamingDirectory);
+            File.WriteAllText(filePath, directory);
+        }
+        catch (Exception)
+        {
+            // 记录路径失败不能影响游戏启动。
+        }
     }
 
     /// <summary>
@@ -1157,6 +1447,24 @@ public sealed class MinecraftService : IMinecraftService, IDisposable
         MVersionType.OldAlpha or MVersionType.OldBeta => GameVersionKind.Old,
         _ => GameVersionKind.Unknown,
     };
+
+    /// <summary>
+    /// 版本 JSON 缺少 <c>javaVersion</c> 时，按 Minecraft 版本号推断所需 Java 主版本。
+    /// </summary>
+    private static int GuessRequiredJavaMajor(string versionName)
+    {
+        var match = Regex.Match(versionName, @"(?<!\d)(1\.\d+(?:\.\d+)?)");
+        if (!match.Success || !Version.TryParse(match.Value, out var version))
+            return 0;
+
+        if (version >= new Version(1, 20, 5))
+            return 21;
+
+        if (version >= new Version(1, 17))
+            return 17;
+
+        return 8;
+    }
 
     /// <summary>
     /// 把字节数格式化为便于阅读的字符串。

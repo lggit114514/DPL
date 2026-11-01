@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DPL.Views.ModpackNameDialog"
+        Title="命名整合包实例"
+        Width="460" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppBackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        FontFamily="{StaticResource AppFontFamily}">
+
+  <Border Background="{DynamicResource CardBackgroundBrush}"
+          BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0"
+          Padding="24">
+    <StackPanel Spacing="14">
+
+      <StackPanel Spacing="4">
+        <TextBlock Text="给整合包实例起个名字" FontSize="17" FontWeight="Bold" />
+        <TextBlock Text="名称会作为 versions 下的实例文件夹名，同一个原版可以安装多个不同名称的整合包。"
+                   Classes="secondary" FontSize="11.5" TextWrapping="Wrap" />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="实例名称" Classes="fieldLabel" />
+        <TextBox Name="NameBox" Watermark="例如 机械动力整合包" />
+      </StackPanel>
+
+      <TextBlock Name="ErrorText" Foreground="{DynamicResource DangerBrush}"
+                 FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap" IsVisible="False" />
+
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <TextBlock Text="不能包含 \ / : * ? &quot; &lt; &gt; |"
+                   FontSize="10.5" Classes="muted" VerticalAlignment="Center"
+                   TextWrapping="Wrap" />
+        <Button Grid.Column="1" Theme="{StaticResource GhostButtonTheme}" Content="取消"
+                Click="OnCancel" Padding="18,9" Margin="0,0,8,0" />
+        <Button Grid.Column="2" Theme="{StaticResource PrimaryButtonTheme}" Content="开始安装"
+                Click="OnConfirm" Padding="24,9" />
+      </Grid>
+    </StackPanel>
+  </Border>
+</Window>

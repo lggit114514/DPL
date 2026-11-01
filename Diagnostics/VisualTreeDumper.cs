@@ -61,17 +61,17 @@ internal static class VisualTreeDumper
 
         void Log(string message) => writer.WriteLine($"[{DateTime.Now:HH:mm:ss}] {message}");
 
-        for (var i = 0; i < 60 && viewModel.LocalVersions.Count == 0; i++)
+        for (var i = 0; i < 60 && viewModel.GetAllLocalVersions().Count == 0; i++)
             await Task.Delay(500);
 
         // 选一个带加载器的版本作为目标实例（没有就用第一个）
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var modded = viewModel.LocalVersions.FirstOrDefault(v =>
+            var modded = viewModel.GetAllLocalVersions().FirstOrDefault(v =>
                 v.Name.Contains("fabric", StringComparison.OrdinalIgnoreCase) ||
                 v.Name.Contains("forge", StringComparison.OrdinalIgnoreCase) ||
                 v.Name.Contains("quilt", StringComparison.OrdinalIgnoreCase));
-            viewModel.SelectedLocalVersion = modded ?? viewModel.LocalVersions.FirstOrDefault();
+            viewModel.SelectedLocalVersion = modded ?? viewModel.GetAllLocalVersions().FirstOrDefault();
         });
 
         await Dispatcher.UIThread.InvokeAsync(() => viewModel.ShowModsPageCommand.Execute(null));
@@ -266,7 +266,7 @@ internal static class VisualTreeDumper
         var pageIndex = await Dispatcher.UIThread.InvokeAsync(() => viewModel.CurrentPageIndex);
         var selected = await Dispatcher.UIThread.InvokeAsync(() => viewModel.SelectedLocalVersion?.Name);
         var localNames = await Dispatcher.UIThread.InvokeAsync(() =>
-            string.Join(", ", viewModel.LocalVersions.Select(v => v.Name).Take(15)));
+            string.Join(", ", viewModel.GetAllLocalVersions().Select(v => v.Name).Take(15)));
 
         Log($"最终：错误={isError} 页面={pageIndex} 状态={finalStatus}");
 
@@ -294,7 +294,7 @@ internal static class VisualTreeDumper
 
         void Log(string message) => writer.WriteLine($"[{DateTime.Now:HH:mm:ss}] {message}");
 
-        for (var i = 0; i < 40 && viewModel.LocalVersions.Count == 0; i++)
+        for (var i = 0; i < 40 && viewModel.GetAllLocalVersions().Count == 0; i++)
             await Task.Delay(500);
 
         Log($"点击前：模式={viewModel.AccountModeIndex} 微软状态={viewModel.MicrosoftLoginStatus}");
@@ -433,7 +433,7 @@ internal static class VisualTreeDumper
         void Log(string message) => writer.WriteLine($"[{DateTime.Now:HH:mm:ss}] {message}");
 
         // 等待初始数据（本地版本 + 账号列表）加载完成
-        for (var i = 0; i < 40 && viewModel.LocalVersions.Count == 0; i++)
+        for (var i = 0; i < 40 && viewModel.GetAllLocalVersions().Count == 0; i++)
             await Task.Delay(500);
 
         var initial = await Dispatcher.UIThread.InvokeAsync(() => new
@@ -493,7 +493,7 @@ internal static class VisualTreeDumper
         });
         Log($"3) 切换正版模式：IsMicrosoftAccountMode={premiumState.IsMicrosoftAccountMode} 说明={premiumState.CurrentAccountDetail}");
 
-        var item = await Dispatcher.UIThread.InvokeAsync(() => viewModel.LocalVersions.FirstOrDefault());
+        var item = await Dispatcher.UIThread.InvokeAsync(() => viewModel.GetAllLocalVersions().FirstOrDefault());
         if (item is not null)
         {
             await Dispatcher.UIThread.InvokeAsync(() => viewModel.SelectedLocalVersion = item);
@@ -530,20 +530,20 @@ internal static class VisualTreeDumper
         void Log(string message) => writer.WriteLine($"[{DateTime.Now:HH:mm:ss}] {message}");
 
         // 等待本地版本列表加载完成。
-        for (var i = 0; i < 60 && viewModel.LocalVersions.Count == 0; i++)
+        for (var i = 0; i < 60 && viewModel.GetAllLocalVersions().Count == 0; i++)
             await Task.Delay(500);
 
         var item = await Dispatcher.UIThread.InvokeAsync(() =>
-            viewModel.LocalVersions.FirstOrDefault(v => v.Name == versionName));
+            viewModel.GetAllLocalVersions().FirstOrDefault(v => v.Name == versionName));
 
         if (item is null)
         {
-            Log($"未找到版本：{versionName}（当前共 {viewModel.LocalVersions.Count} 个本地版本）");
+            Log($"未找到版本：{versionName}（当前共 {viewModel.GetAllLocalVersions().Count} 个本地版本）");
             Environment.Exit(0);
             return;
         }
 
-        Log($"本地版本 = {viewModel.LocalVersions.Count}，目标版本 = {versionName}");
+        Log($"本地版本 = {viewModel.GetAllLocalVersions().Count}，目标版本 = {versionName}");
         Log($"Java 候选 = {string.Join(" | ", viewModel.JavaCandidates.Select(c => c.DisplayName))}");
         Log($"Java 提示 = {viewModel.JavaDetectedText}");
         Log($"启动前校验开关 = {viewModel.CheckFilesBeforeLaunch}，版本隔离开关 = {viewModel.UseVersionIsolation}");
@@ -623,7 +623,7 @@ internal static class VisualTreeDumper
         for (var i = 0; i < 40 && (viewModel.OnlineVersions.Count == 0 || viewModel.IsBusy); i++)
             await Task.Delay(500);
 
-        Log($"在线版本 {viewModel.OnlineVersions.Count} 个，本地版本 {viewModel.LocalVersions.Count} 个");
+        Log($"在线版本 {viewModel.OnlineVersions.Count} 个，本地版本 {viewModel.GetAllLocalVersions().Count} 个");
 
         var target = await Dispatcher.UIThread.InvokeAsync(() => viewModel.OnlineVersions
             .FirstOrDefault(v => !v.IsInstalled && v.Kind == DPL.Models.GameVersionKind.Release));
@@ -666,7 +666,7 @@ internal static class VisualTreeDumper
 
         var status1 = await Dispatcher.UIThread.InvokeAsync(() => viewModel.StatusMessage);
         var inLocal = await Dispatcher.UIThread.InvokeAsync(() =>
-            viewModel.LocalVersions.Any(v => v.Name == target.Name));
+            viewModel.GetAllLocalVersions().Any(v => v.Name == target.Name));
         var badgeInstalled = await Dispatcher.UIThread.InvokeAsync(() => target.IsInstalled);
 
         Log($"最终状态：{status1}");

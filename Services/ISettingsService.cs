@@ -8,6 +8,12 @@ namespace DPL.Services;
 public interface ISettingsService
 {
     /// <summary>
+    /// 最近一次 <see cref="Load"/> 产生的警告（例如便携游戏目录创建失败并已回退），
+    /// 供界面写入启动器日志；没有警告时为 null。
+    /// </summary>
+    string? LastWarning { get; }
+
+    /// <summary>
     /// 读取本地设置；若不存在或读取失败，则返回默认设置。
     /// </summary>
     LauncherSettings Load();

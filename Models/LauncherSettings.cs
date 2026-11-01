@@ -19,8 +19,22 @@ public sealed class LauncherSettings
     /// <summary>自定义 Java 可执行文件路径；为空表示自动检测。</summary>
     public string JavaPath { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Java 运行库存储目录。自动下载的 Java 会解压到该目录下的 <c>java-&lt;主版本&gt;</c>。
+    /// </summary>
+    public string JavaRuntimeDirectory { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "DPL",
+        "runtime");
+
+    /// <summary>缺少匹配的 Java 时是否允许自动下载（默认开启）。</summary>
+    public bool AutoDownloadJava { get; set; } = true;
+
     /// <summary>最大内存（单位 MB），对应 JVM 参数 -Xmx。</summary>
     public int MaxMemoryMb { get; set; } = 4096;
+
+    /// <summary>下载线程数（1-32），用于多线程分片下载。</summary>
+    public int DownloadThreadCount { get; set; } = 8;
 
     /// <summary>启动前是否先校验并补全游戏文件（调用 CmlLib 的 InstallAsync）。</summary>
     public bool CheckFilesBeforeLaunch { get; set; } = true;
@@ -39,6 +53,12 @@ public sealed class LauncherSettings
 
     /// <summary>用过的离线账号名称历史（最近使用的在最后，供下拉框选择）。</summary>
     public List<string> OfflineNameHistory { get; set; } = new();
+
+    /// <summary>
+    /// 收藏的本地版本名称。即使版本已卸载，名称也保留在设置里，
+    /// 之后重新安装同名版本时仍会显示为收藏。
+    /// </summary>
+    public List<string> FavoriteVersions { get; set; } = new();
 
     /// <summary>
     /// CurseForge 的 API Key（不能硬编码在源码里，由用户填写）。

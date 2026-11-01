@@ -34,6 +34,12 @@ public static class AppPaths
     /// <summary>镜像下载日志文件路径。</summary>
     public static string MirrorLogFile => Path.Combine(RoamingDirectory, "mirror.log");
 
+    /// <summary>启动器运行日志目录（与可执行文件同级，便于打包后直接提供）。</summary>
+    public static string LogsDirectory { get; } = Path.Combine(AppContext.BaseDirectory, "logs");
+
+    /// <summary>当前会话的完整运行日志。</summary>
+    public static string LatestLogFile => Path.Combine(LogsDirectory, "latest.log");
+
     /// <summary>
     /// 确保目录存在（失败时忽略，调用方会退化为不落盘）。
     /// </summary>

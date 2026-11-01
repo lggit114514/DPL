@@ -12,11 +12,17 @@ public static class JavaLocator
     /// <summary>
     /// 扫描本机所有可用的 Java 可执行文件。
     /// </summary>
+    /// <param name="extraRootDirectory">
+    /// 额外的 Java 运行库根目录（启动器自动下载目录）；会递归查找 <c>bin/java(w)</c>。
+    /// </param>
     /// <returns>去重后的 Java 候选列表，优先返回带 <c>javaw</c> 的窗口版可执行文件。</returns>
-    public static IReadOnlyList<JavaCandidate> FindCandidates()
+    public static IReadOnlyList<JavaCandidate> FindCandidates(string? extraRootDirectory = null)
     {
         var executables = new List<string>();
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        // 0. 启动器自己的 Java 运行库目录（可能有多层 jdk-xxx 嵌套）。
+        AddFromRuntimeRoot(executables, extraRootDirectory);
 
         // 1. JAVA_HOME 环境变量指向的 JDK / JRE
         AddFromJavaHome(executables, Environment.GetEnvironmentVariable("JAVA_HOME"));
@@ -67,6 +73,33 @@ public static class JavaLocator
         AddFromPathVariable(executables);
 
         return BuildCandidates(executables);
+    }
+
+    /// <summary>
+    /// 从启动器自己的 Java 运行库根目录递归查找 <c>bin/java(w)</c>。
+    /// 自动下载的 ZIP 通常带一层 <c>jdk-xxx</c>，不能只扫一级子目录。
+    /// </summary>
+    private static void AddFromRuntimeRoot(List<string> executables, string? rootDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(rootDirectory))
+            return;
+
+        var root = rootDirectory.Trim().Trim('"');
+        try
+        {
+            if (!Directory.Exists(root))
+                return;
+
+            foreach (var binDirectory in Directory.EnumerateDirectories(
+                         root, "bin", SearchOption.AllDirectories))
+            {
+                AddExecutable(executables, binDirectory);
+            }
+        }
+        catch (Exception)
+        {
+            // 运行库目录不可读时忽略。
+        }
     }
 
     /// <summary>

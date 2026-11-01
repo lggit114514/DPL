@@ -27,6 +27,21 @@ public interface IMinecraftService
     void UseVersionsDirectory(string? versionsDirectory);
 
     /// <summary>
+    /// 设置启动器自己的 Java 运行库目录；扫描本机 Java 时会递归包含该目录。
+    /// </summary>
+    /// <param name="javaRuntimeDirectory">Java 运行库根目录；null 或空表示不额外扫描。</param>
+    void UseJavaRuntimeDirectory(string? javaRuntimeDirectory);
+
+    /// <summary>
+    /// 读取某个版本所需的 Java 主版本（优先版本 JSON 的 <c>javaVersion.majorVersion</c>，
+    /// 缺失时按 Minecraft 版本号做静态映射）。
+    /// </summary>
+    /// <param name="versionName">版本名称。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>需要的 Java 主版本；无法判断时返回 0。</returns>
+    Task<int> GetRequiredJavaMajorVersionAsync(string versionName, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 取得指定版本所在文件夹的绝对路径（即 &lt;版本目录&gt;/&lt;版本名&gt;）。
     /// </summary>
     /// <param name="versionName">版本名称。</param>
@@ -134,13 +149,18 @@ public interface IMinecraftService
     /// <param name="kind">加载器类型。</param>
     /// <param name="minecraftVersion">Minecraft 版本号。</param>
     /// <param name="loaderVersion">加载器版本号；为空表示使用最新版。</param>
+    /// <param name="customVersionName">
+    /// 自定义实例名称；为空时沿用 CmlLib 生成的名称。
+    /// 非空时会强制使用该名称作为 versions 下的文件夹名，并同步修改版本 JSON 的 id。
+    /// </param>
     /// <param name="progress">安装进度回调；可为 null。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>安装后的版本名称（例如 <c>fabric-loader-0.16.10-1.21.4</c>）。</returns>
+    /// <returns>安装后的版本名称（默认是 <c>fabric-loader-0.16.10-1.21.4</c> 这类名称；指定自定义名称时就是该名称）。</returns>
     Task<string> InstallModLoaderAsync(
         ModLoaderKind kind,
         string minecraftVersion,
         string? loaderVersion,
+        string? customVersionName = null,
         IProgress<InstallProgressInfo>? progress = null,
         CancellationToken cancellationToken = default);
 

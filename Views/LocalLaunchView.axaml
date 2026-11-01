@@ -5,6 +5,82 @@
              x:Class="DPL.Views.LocalLaunchView"
              x:DataType="vm:MainWindowViewModel">
 
+  <UserControl.Resources>
+    <!-- 收藏 / 全部两个列表共用同一张版本卡片 -->
+    <DataTemplate x:Key="VersionItemTemplate" x:DataType="vm:VersionItemViewModel">
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,10">
+        <Border Grid.Column="0" Classes="versionBadge"
+                Classes.release="{Binding IsRelease}"
+                Classes.snapshot="{Binding IsSnapshot}"
+                Classes.old="{Binding IsOld}"
+                VerticalAlignment="Center">
+          <TextBlock Text="{Binding TypeText}" />
+        </Border>
+
+        <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="3" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Name}" FontSize="14.5" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding ReleaseTimeText}" FontSize="10.5" Classes="muted" />
+        </StackPanel>
+
+        <!-- 收藏、打开文件夹、启动统一放在右下角同一水平操作区 -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
+                    HorizontalAlignment="Right" VerticalAlignment="Center">
+          <TextBlock Text="{Binding StatusText}" FontSize="10.5" Classes="accent"
+                     VerticalAlignment="Center" IsVisible="{Binding HasStatusText}" />
+          <Button Theme="{StaticResource IconButtonTheme}"
+                  Command="{Binding ToggleFavoriteCommand}"
+                  IsVisible="{Binding CanFavorite}"
+                  VerticalAlignment="Center"
+                  ToolTip.Tip="{Binding FavoriteToolTip}">
+            <Grid Width="15" Height="15">
+              <Path Data="M12,21.35 L10.55,20.03 C5.4,15.36 2,12.28 2,8.5 C2,5.42 4.42,3 7.5,3 C9.24,3 10.91,3.81 12,5.09 C13.09,3.81 14.76,3 16.5,3 C19.58,3 22,5.42 22,8.5 C22,12.28 18.6,15.36 13.45,20.03 L12,21.35 Z"
+                    Fill="{DynamicResource DangerBrush}"
+                    Stretch="Uniform" Width="15" Height="15"
+                    IsVisible="{Binding IsFavorite}" />
+              <Path Data="M12,21.35 L10.55,20.03 C5.4,15.36 2,12.28 2,8.5 C2,5.42 4.42,3 7.5,3 C9.24,3 10.91,3.81 12,5.09 C13.09,3.81 14.76,3 16.5,3 C19.58,3 22,5.42 22,8.5 C22,12.28 18.6,15.36 13.45,20.03 L12,21.35 Z"
+                    Fill="Transparent"
+                    Stroke="{DynamicResource TextMutedBrush}"
+                    StrokeThickness="1.4"
+                    Stretch="Uniform" Width="15" Height="15"
+                    IsVisible="{Binding !IsFavorite}" />
+            </Grid>
+          </Button>
+          <Button Theme="{StaticResource IconButtonTheme}"
+                  Command="{Binding OpenFolderCommand}"
+                  IsVisible="{Binding OpenFolderVisible}"
+                  VerticalAlignment="Center"
+                  ToolTip.Tip="打开此版本的文件夹">
+            <Path Data="M2,4.5 H6.2 L7.6,6.3 H14 V13 H2 Z"
+                  Fill="{DynamicResource TextSecondaryBrush}"
+                  Width="13" Height="13" Stretch="Uniform" />
+          </Button>
+          <Button Theme="{StaticResource PrimaryButtonTheme}" Content="启动"
+                  Command="{Binding LaunchCommand}"
+                  IsVisible="{Binding LaunchButtonVisible}"
+                  IsEnabled="{Binding IsIdle}"
+                  VerticalAlignment="Center"
+                  Padding="16,6" FontSize="11.5" />
+        </StackPanel>
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <!-- 默认展开：ScaleY=1，箭头向下 -->
+    <Style Selector="Path.sectionChevron">
+      <Setter Property="RenderTransform">
+        <ScaleTransform ScaleY="1" />
+      </Setter>
+    </Style>
+
+    <!-- 折叠：ScaleY=-1，上下翻转成向上 -->
+    <Style Selector="Path.sectionChevron.collapsed">
+      <Setter Property="RenderTransform">
+        <ScaleTransform ScaleY="-1" />
+      </Setter>
+    </Style>
+  </UserControl.Styles>
+
   <Grid RowDefinitions="Auto,*" Margin="24,14,24,14">
 
     <!-- ==================== 页面标题 ==================== -->
@@ -29,56 +105,160 @@
     <!-- ==================== 页面主体 ==================== -->
     <Grid Grid.Row="1" ColumnDefinitions="*,332">
 
-      <!-- 版本列表 -->
+      <!-- 版本列表：收藏 / 全部两个可折叠的大卡片容器 -->
       <Grid Grid.Column="0" Margin="0,0,18,0">
-        <ListBox ItemsSource="{Binding LocalVersions}"
-                 SelectedItem="{Binding SelectedLocalVersion}"
-                 ItemContainerTheme="{StaticResource VersionListBoxItemTheme}"
-                 IsVisible="{Binding HasLocalVersions}"
-                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-          <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="vm:VersionItemViewModel">
-              <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,12">
-                <Border Grid.Column="0" Classes="versionBadge"
-                        Classes.release="{Binding IsRelease}"
-                        Classes.snapshot="{Binding IsSnapshot}"
-                        Classes.old="{Binding IsOld}"
-                        VerticalAlignment="Center">
-                  <TextBlock Text="{Binding TypeText}" />
+        <ScrollViewer IsVisible="{Binding HasLocalVersions}"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="14">
+
+            <!-- ==================== 收藏区块 ==================== -->
+            <Border IsVisible="{Binding HasFavoriteLocalVersions}"
+                    Background="{DynamicResource GroupContainerBackground}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="16"
+                    ClipToBounds="True">
+              <Grid RowDefinitions="Auto,Auto">
+                <!-- Header 固定在第一行，不随下方列表高度变化 -->
+                <Button Grid.Row="0"
+                        Theme="{StaticResource CardClickButtonTheme}"
+                        Command="{Binding ToggleFavoriteSectionCommand}"
+                        HorizontalContentAlignment="Stretch">
+                  <Grid ColumnDefinitions="Auto,*,Auto" Margin="16,12,16,10">
+                    <Border Width="24" Height="24" Background="Transparent">
+                      <Path Classes="sectionChevron"
+                            Classes.collapsed="{Binding !IsFavoriteSectionExpanded}"
+                            Data="M 0,0 L 8,8 L 16,0"
+                            Stroke="{DynamicResource TextPrimaryBrush}"
+                            StrokeThickness="2"
+                            StrokeLineCap="Round"
+                            StrokeJoin="Round"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            RenderTransformOrigin="0.5,0.5">
+                        <Path.Transitions>
+                          <Transitions>
+                            <TransformOperationsTransition Property="RenderTransform"
+                                                           Duration="0:0:0.25"
+                                                           Easing="CubicEaseInOut" />
+                          </Transitions>
+                        </Path.Transitions>
+                      </Path>
+                    </Border>
+                    <TextBlock Grid.Column="1" Text="收藏的版本"
+                               FontSize="14" FontWeight="SemiBold"
+                               Margin="10,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="{Binding FavoriteCountText}"
+                               FontSize="10.5" Classes="muted" VerticalAlignment="Center" />
+                  </Grid>
+                </Button>
+
+                <!-- 不绑定 IsVisible：用 MaxHeight 0 ↔ 按条目数计算的高度做平滑动画 -->
+                <Border Grid.Row="1"
+                        MaxHeight="{Binding FavoriteSectionMaxHeight, Mode=OneWay}"
+                        MinHeight="0"
+                        ClipToBounds="True">
+                  <Border.Transitions>
+                    <Transitions>
+                      <DoubleTransition Property="MaxHeight"
+                                        Duration="0:0:0.3"
+                                        Easing="CubicEaseOut" />
+                    </Transitions>
+                  </Border.Transitions>
+
+                  <ListBox ItemsSource="{Binding FavoriteLocalVersions}"
+                           SelectedItem="{Binding SelectedLocalVersion, Mode=OneWay}"
+                           SelectionChanged="OnLocalVersionSelectionChanged"
+                           ItemTemplate="{StaticResource VersionItemTemplate}"
+                           ItemContainerTheme="{StaticResource VersionListBoxItemTheme}"
+                           Background="Transparent"
+                           BorderThickness="0"
+                           Padding="10,0,10,10"
+                           MinHeight="0"
+                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                           ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
                 </Border>
-
-                <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="3" VerticalAlignment="Center">
-                  <TextBlock Text="{Binding Name}" FontSize="14.5" FontWeight="SemiBold" />
-                  <TextBlock Text="{Binding ReleaseTimeText}" FontSize="10.5" Classes="muted" />
-                </StackPanel>
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                  <TextBlock Text="{Binding StatusText}" FontSize="10.5" Classes="accent"
-                             VerticalAlignment="Center" IsVisible="{Binding HasStatusText}" />
-                  <Button Theme="{StaticResource IconButtonTheme}"
-                          Command="{Binding OpenFolderCommand}"
-                          IsVisible="{Binding OpenFolderVisible}"
-                          ToolTip.Tip="打开此版本的文件夹">
-                    <Path Data="M2,4.5 H6.2 L7.6,6.3 H14 V13 H2 Z"
-                          Fill="{DynamicResource TextSecondaryBrush}"
-                          Width="13" Height="13" Stretch="Uniform" />
-                  </Button>
-                  <Button Theme="{StaticResource PrimaryButtonTheme}" Content="启动"
-                          Command="{Binding LaunchCommand}"
-                          IsVisible="{Binding LaunchButtonVisible}"
-                          IsEnabled="{Binding IsIdle}"
-                          Padding="16,6" FontSize="11.5" />
-                </StackPanel>
               </Grid>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+            </Border>
 
-        <!-- 空状态 -->
+            <!-- ==================== 全部版本区块 ==================== -->
+            <Border IsVisible="{Binding HasLocalVersions}"
+                    Background="{DynamicResource GroupContainerBackground}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="16"
+                    ClipToBounds="True">
+              <Grid RowDefinitions="Auto,Auto">
+                <!-- Header 固定在第一行，不随下方列表高度变化 -->
+                <Button Grid.Row="0"
+                        Theme="{StaticResource CardClickButtonTheme}"
+                        Command="{Binding ToggleAllSectionCommand}"
+                        HorizontalContentAlignment="Stretch">
+                  <Grid ColumnDefinitions="Auto,*,Auto" Margin="16,12,16,10">
+                    <Border Width="24" Height="24" Background="Transparent">
+                      <Path Classes="sectionChevron"
+                            Classes.collapsed="{Binding !IsAllSectionExpanded}"
+                            Data="M 0,0 L 8,8 L 16,0"
+                            Stroke="{DynamicResource TextPrimaryBrush}"
+                            StrokeThickness="2"
+                            StrokeLineCap="Round"
+                            StrokeJoin="Round"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            RenderTransformOrigin="0.5,0.5">
+                        <Path.Transitions>
+                          <Transitions>
+                            <TransformOperationsTransition Property="RenderTransform"
+                                                           Duration="0:0:0.25"
+                                                           Easing="CubicEaseInOut" />
+                          </Transitions>
+                        </Path.Transitions>
+                      </Path>
+                    </Border>
+                    <TextBlock Grid.Column="1" Text="全部版本"
+                               FontSize="14" FontWeight="SemiBold"
+                               Margin="10,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="{Binding AllCountText}"
+                               FontSize="10.5" Classes="muted" VerticalAlignment="Center" />
+                  </Grid>
+                </Button>
+
+                <!-- 不绑定 IsVisible：用 MaxHeight 0 ↔ 按条目数计算的高度做平滑动画 -->
+                <Border Grid.Row="1"
+                        MaxHeight="{Binding AllSectionMaxHeight, Mode=OneWay}"
+                        MinHeight="0"
+                        ClipToBounds="True">
+                  <Border.Transitions>
+                    <Transitions>
+                      <DoubleTransition Property="MaxHeight"
+                                        Duration="0:0:0.3"
+                                        Easing="CubicEaseOut" />
+                    </Transitions>
+                  </Border.Transitions>
+
+                  <ListBox ItemsSource="{Binding LocalVersions}"
+                           SelectedItem="{Binding SelectedLocalVersion, Mode=OneWay}"
+                           SelectionChanged="OnLocalVersionSelectionChanged"
+                           ItemTemplate="{StaticResource VersionItemTemplate}"
+                           ItemContainerTheme="{StaticResource VersionListBoxItemTheme}"
+                           Background="Transparent"
+                           BorderThickness="0"
+                           Padding="10,0,10,10"
+                           MinHeight="0"
+                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                           ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                </Border>
+              </Grid>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- 空状态：全量本地版本集合为空时才显示 -->
         <StackPanel IsVisible="{Binding IsLocalListEmpty}"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10">
           <Border Width="56" Height="56" CornerRadius="16"
-                  Background="{DynamicResource CardBackgroundBrush}"
+                  Background="{DynamicResource GroupContainerBackground}"
                   BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
             <Path Data="M5,3 L15,9 L5,15 Z" Fill="{DynamicResource TextMutedBrush}"
                   Width="18" Height="18" Stretch="Uniform"
@@ -100,7 +280,7 @@
               Background="{DynamicResource CardBackgroundBrush}"
               BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
               CornerRadius="14" Padding="18">
-        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+        <Grid RowDefinitions="Auto,Auto,*">
 
           <StackPanel Grid.Row="0" Spacing="2">
             <TextBlock Text="已选版本" Classes="fieldLabel" />
@@ -149,10 +329,13 @@
               <TextBlock Text="Java 运行时" Classes="fieldLabel" />
               <ComboBox ItemsSource="{Binding JavaCandidates}"
                         SelectedItem="{Binding SelectedJava}"
-                        PlaceholderText="自动检测">
+                        PlaceholderText="自动检测"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch">
                 <ComboBox.ItemTemplate>
                   <DataTemplate x:DataType="models:JavaCandidate">
                     <TextBlock Text="{Binding DisplayName}" FontSize="11"
+                               TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis" />
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
@@ -180,61 +363,14 @@
             <CheckBox Content="启动前校验并补全游戏文件" IsChecked="{Binding CheckFilesBeforeLaunch}" />
           </StackPanel>
 
-          <!-- 游戏日志 -->
-          <Border Grid.Row="2" Background="{DynamicResource CodeBackgroundBrush}"
-                  BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                  CornerRadius="10" Margin="0,14,0,0" MinHeight="92">
-            <Grid RowDefinitions="Auto,*">
-              <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="10,7,8,4">
-                <TextBlock Text="游戏日志" FontSize="10.5" Classes="muted" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Theme="{StaticResource GhostButtonTheme}" Content="清空"
-                        Command="{Binding ClearLogCommand}" Padding="8,2" FontSize="10" />
-              </Grid>
-              <ScrollViewer Grid.Row="1" Margin="10,0,10,8"
-                            VerticalScrollBarVisibility="Auto"
-                            HorizontalScrollBarVisibility="Disabled">
-                <ItemsControl ItemsSource="{Binding GameLogs}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="x:String">
-                      <TextBlock Text="{Binding}" Classes="logLine" />
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </ScrollViewer>
-            </Grid>
-          </Border>
-
-          <!-- 启动器日志（网络 / 下载 / 模组搜索等，和游戏输出分开） -->
-          <Border Grid.Row="3" Background="{DynamicResource CodeBackgroundBrush}"
-                  BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                  CornerRadius="10" Margin="0,10,0,0" MinHeight="80">
-            <Grid RowDefinitions="Auto,*">
-              <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="10,7,8,4">
-                <TextBlock Text="启动器日志" FontSize="10.5" Classes="muted" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Theme="{StaticResource GhostButtonTheme}" Content="清空"
-                        Command="{Binding ClearAppLogCommand}" Padding="8,2" FontSize="10" />
-              </Grid>
-              <ScrollViewer Grid.Row="1" Margin="10,0,10,8"
-                            VerticalScrollBarVisibility="Auto"
-                            HorizontalScrollBarVisibility="Disabled">
-                <ItemsControl ItemsSource="{Binding AppLogs}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="x:String">
-                      <TextBlock Text="{Binding}" Classes="logLine" />
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </ScrollViewer>
-            </Grid>
-          </Border>
-
           <!-- 启动按钮 -->
-          <Button Grid.Row="4" Theme="{StaticResource PrimaryButtonTheme}"
+          <Button Grid.Row="2" Theme="{StaticResource PrimaryButtonTheme}"
                   Content="启动游戏"
                   Command="{Binding LaunchSelectedCommand}"
                   IsEnabled="{Binding HasSelectedVersion}"
                   HorizontalAlignment="Stretch"
                   HorizontalContentAlignment="Center"
+                  VerticalAlignment="Bottom"
                   Padding="0,12" FontSize="13.5" Margin="0,14,0,0" />
         </Grid>
       </Border>

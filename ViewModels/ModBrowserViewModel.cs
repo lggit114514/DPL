@@ -15,12 +15,14 @@ public sealed class ModBrowserViewModel : ViewModelBase
 {
     private readonly Func<ModTarget?> _targetProvider;
     private readonly Func<string?> _apiKeyProvider;
+    private readonly Func<int>? _threadCountProvider;
     private readonly Action<string> _logSink;
 
     private ModSourceRouter? _router;
     private ModDependencyResolver? _resolver;
     private ModInstallService? _installer;
     private string? _routerApiKey;
+    private int _routerThreadCount;
 
     private string _searchText = string.Empty;
     private int _sourceIndex;
@@ -41,6 +43,7 @@ public sealed class ModBrowserViewModel : ViewModelBase
     private string _popularNotice = string.Empty;
     private double _progressPercent;
     private string _statusText = "输入关键字搜索模组（例如 fabric api、jei）";
+    private string _speedText = string.Empty;
     private string _errorText = string.Empty;
     private bool _isActive;
 
@@ -50,13 +53,16 @@ public sealed class ModBrowserViewModel : ViewModelBase
     /// <param name="targetProvider">获取当前目标实例（版本 / 加载器 / mods 目录）。</param>
     /// <param name="apiKeyProvider">获取 CurseForge API Key。</param>
     /// <param name="logSink">日志输出到主界面的日志面板。</param>
+    /// <param name="threadCountProvider">获取用户设置的下载线程数（1-32）。</param>
     public ModBrowserViewModel(
         Func<ModTarget?> targetProvider,
         Func<string?> apiKeyProvider,
-        Action<string> logSink)
+        Action<string> logSink,
+        Func<int>? threadCountProvider = null)
     {
         _targetProvider = targetProvider;
         _apiKeyProvider = apiKeyProvider;
+        _threadCountProvider = threadCountProvider;
         _logSink = logSink;
 
         SourceOptions = new ObservableCollection<string> { "自动（择优）", "Modrinth", "CurseForge" };
@@ -311,6 +317,13 @@ public sealed class ModBrowserViewModel : ViewModelBase
     {
         get => _statusText;
         private set => SetProperty(ref _statusText, value);
+    }
+
+    /// <summary>实时下载速度，例如“12.5 MB/s”。</summary>
+    public string SpeedText
+    {
+        get => _speedText;
+        private set => SetProperty(ref _speedText, value);
     }
 
     /// <summary>错误文案（为空表示没有错误）。</summary>
@@ -660,6 +673,7 @@ public sealed class ModBrowserViewModel : ViewModelBase
         IsDownloading = true;
         ErrorText = string.Empty;
         ProgressPercent = 0;
+        SpeedText = string.Empty;
 
         try
         {
@@ -676,6 +690,7 @@ public sealed class ModBrowserViewModel : ViewModelBase
             var progress = new UiProgress<ModDownloadProgress>(info =>
             {
                 ProgressPercent = info.Percent;
+                SpeedText = info.SpeedText;
                 StatusText = $"{info.Stage}（{info.FileIndex}/{info.FileCount}）";
             });
 
@@ -701,6 +716,7 @@ public sealed class ModBrowserViewModel : ViewModelBase
         finally
         {
             IsDownloading = false;
+            SpeedText = string.Empty;
         }
     }
 
@@ -710,12 +726,21 @@ public sealed class ModBrowserViewModel : ViewModelBase
     private void EnsureServices()
     {
         var apiKey = _apiKeyProvider();
-        if (_router is not null && string.Equals(apiKey, _routerApiKey, StringComparison.Ordinal))
+        var threadCount = Math.Clamp(_threadCountProvider?.Invoke() ?? 8, 1, 32);
+        if (_router is not null &&
+            string.Equals(apiKey, _routerApiKey, StringComparison.Ordinal) &&
+            _routerThreadCount == threadCount)
+        {
             return;
+        }
 
         _router?.Dispose();
 
-        var config = new ModConfig { CurseForgeApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim() };
+        var config = new ModConfig
+        {
+            CurseForgeApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim(),
+            DownloadThreadCount = threadCount,
+        };
         var http = new ModHttp(config);
         http.LogWritten += message => _logSink("[模组] " + message);
 
@@ -724,6 +749,7 @@ public sealed class ModBrowserViewModel : ViewModelBase
         _resolver.LogWritten += message => _logSink("[模组] " + message);
         _installer = new ModInstallService(_router, http, config);
         _routerApiKey = apiKey;
+        _routerThreadCount = threadCount;
     }
 
     /// <summary>

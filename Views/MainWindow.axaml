@@ -14,7 +14,10 @@
         FontFamily="{StaticResource AppFontFamily}"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaChromeHints="NoChrome"
-        ExtendClientAreaTitleBarHeightHint="-1">
+        ExtendClientAreaTitleBarHeightHint="-1"
+        DragDrop.AllowDrop="True"
+        DragDrop.DragOver="OnDragOver"
+        DragDrop.Drop="OnDrop">
 
   <Grid RowDefinitions="46,*">
 
@@ -227,6 +230,9 @@
                            VerticalAlignment="Center" />
               <TextBlock Text="{Binding InstallSizeText}" FontSize="11" Classes="secondary"
                          VerticalAlignment="Center" MinWidth="120" />
+              <TextBlock Text="{Binding InstallSpeedText}" FontSize="11" Classes="accent"
+                         VerticalAlignment="Center" MinWidth="76"
+                         ToolTip.Tip="实时下载速度" />
               <TextBlock Text="{Binding InstallFileText}" FontSize="10.5" Classes="muted"
                          VerticalAlignment="Center" MaxWidth="200"
                          TextTrimming="CharacterEllipsis" />

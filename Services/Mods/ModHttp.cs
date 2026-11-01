@@ -21,6 +21,7 @@ public sealed class ModHttp : IDisposable
     private readonly ModConfig _config;
     private readonly bool _ownsClient;
     private readonly ChunkedFileDownloader _chunked;
+    private readonly DownloaderFileDownloader _downloader;
 
     /// <summary>日志回调（可能在后台线程触发）。</summary>
     public event Action<string>? LogWritten;
@@ -68,9 +69,13 @@ public sealed class ModHttp : IDisposable
             {
                 ThresholdBytes = config.ChunkThresholdBytes,
                 ChunkSizeBytes = config.ChunkSizeBytes,
-                MaxParallelChunks = config.ChunkParallelism,
+                MaxParallelChunks = config.DownloadThreadCount,
             });
         _chunked.LogWritten += message => Log("[分片] " + message);
+
+        // 主下载通道：bezzad/Downloader，线程数来自用户设置。
+        _downloader = new DownloaderFileDownloader(_client, config.DownloadThreadCount);
+        _downloader.LogWritten += message => Log("[Downloader] " + message);
     }
 
     /// <summary>
@@ -169,20 +174,24 @@ public sealed class ModHttp : IDisposable
     }
 
     /// <summary>
-    /// 下载文件到指定路径：先试官方 CDN，全部失败后才走镜像（镜像稳定性差，只在必要时用）。
+    /// 下载文件到指定路径：优先使用 Downloader 多线程下载，
+    /// 失败后回退到旧的分片 / 单线程通道。
     /// </summary>
-    /// <param name="officialUrls">官方候选地址（可能有多个，例如 edge / mediafilez）。</param>
-    /// <param name="mirrorUrls">镜像候选地址。</param>
+    /// <param name="primaryUrls">主候选地址。</param>
+    /// <param name="fallbackUrls">备用候选地址。</param>
     /// <param name="destinationPath">保存路径。</param>
     /// <param name="progress">进度回调（已下载字节、总字节）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
+    /// <param name="expectedBytes">已知文件大小；0 表示未知。</param>
+    /// <param name="speedProgress">实时速度回调（字节/秒）。</param>
     public async Task<ModFileDownloadResult> DownloadFileAsync(
         IReadOnlyList<string> primaryUrls,
         IReadOnlyList<string> fallbackUrls,
         string destinationPath,
         Action<long, long>? progress,
         CancellationToken cancellationToken = default,
-        long expectedBytes = 0)
+        long expectedBytes = 0,
+        Action<double>? speedProgress = null)
     {
         var candidates = new List<(string Kind, string Url)>();
         foreach (var url in primaryUrls)
@@ -191,6 +200,48 @@ public sealed class ModHttp : IDisposable
             candidates.Add((LabelFor(url), url));
 
         var errors = new List<string>();
+
+        // 首选成熟的 Downloader 库：多线程分片 + 多源回退。
+        if (candidates.Count > 0)
+        {
+            try
+            {
+                var downloaderResult = await _downloader
+                    .DownloadAsync(
+                        candidates.Select(candidate => candidate.Url).ToList(),
+                        destinationPath,
+                        expectedBytes,
+                        progress,
+                        speedProgress,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                var invalid = ValidateDownloadedFile(destinationPath, expectedBytes);
+                if (invalid is null)
+                {
+                    Log($"Downloader 下载成功：{Path.GetFileName(destinationPath)}，{downloaderResult.Bytes / 1024} KB");
+                    return new ModFileDownloadResult(
+                        destinationPath,
+                        downloaderResult.Bytes,
+                        downloaderResult.UsedFallback,
+                        errors);
+                }
+
+                errors.Add($"Downloader => {invalid}");
+                Log($"Downloader 下载内容校验失败：{invalid}");
+                TryDelete(destinationPath);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Downloader => {ex.GetType().Name}: {ex.Message}");
+                Log($"Downloader 下载失败，回退旧下载通道：{ex.Message}");
+                TryDelete(destinationPath);
+            }
+        }
 
         // 大文件优先分片下载（官方 → BMCLAPI → MCIM）；所有源都不支持 Range 时回退到下面的单线程逻辑。
         if (_chunked.ShouldChunk(expectedBytes) && candidates.Count > 0)
@@ -266,6 +317,7 @@ public sealed class ModHttp : IDisposable
                     var total = response.Content.Headers.ContentLength ?? 0;
                     var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
                     long written = 0;
+                    var speedWatch = Stopwatch.StartNew();
                     var header = new byte[4];
                     var headerLength = 0;
 
@@ -286,6 +338,12 @@ public sealed class ModHttp : IDisposable
                             await target.WriteAsync(buffer.AsMemory(0, read), cts.Token).ConfigureAwait(false);
                             written += read;
                             progress?.Invoke(written, total);
+
+                            if (speedProgress is not null && speedWatch.ElapsedMilliseconds >= 250)
+                            {
+                                speedProgress(written / Math.Max(0.001, speedWatch.Elapsed.TotalSeconds));
+                                speedWatch.Restart();
+                            }
                         }
                     }
 

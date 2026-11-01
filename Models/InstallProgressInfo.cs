@@ -27,6 +27,11 @@ public sealed class InstallProgressInfo
     public double Ratio { get; init; }
 
     /// <summary>
+    /// 已格式化好的下载速度，例如 <c>12.5 MB/s</c>；无法计算时为空。
+    /// </summary>
+    public string SpeedText { get; init; } = string.Empty;
+
+    /// <summary>
     /// 已格式化好的进度描述，例如 <c>12.3 MB / 240.0 MB</c>。
     /// </summary>
     public string SizeText { get; init; } = string.Empty;

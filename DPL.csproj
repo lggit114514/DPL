@@ -23,9 +23,11 @@
     <BuiltInComInteropSupport Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</BuiltInComInteropSupport>
     <ApplicationManifest Condition="$([MSBuild]::IsOSPlatform('Windows'))">app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- 强制在 Release 下也编译 XAML，避免程序集里只有原始 axaml 而没有预编译 XAML -->
+    <EnableAvaloniaXamlCompilation>true</EnableAvaloniaXamlCompilation>
     <RootNamespace>DPL</RootNamespace>
     <AssemblyName>DPL</AssemblyName>
-    <Version>1.0.0</Version>
+    <Version>1.0.0Plus</Version>
     <Authors>DPL</Authors>
     <Product>Diamond Pickaxe Launcher</Product>
     <AssemblyTitle>钻石镐启动器</AssemblyTitle>
@@ -33,6 +35,10 @@
     <ApplicationIcon Condition="$([MSBuild]::IsOSPlatform('Windows'))">Assets/app.ico</ApplicationIcon>
     <!-- 启动器本身不依赖 Trim/AOT，保持默认以保证反射序列化可用 -->
     <PublishTrimmed>false</PublishTrimmed>
+    <!-- 明确关闭所有会改写程序集/资源布局的发布选项，避免 Avalonia 预编译 XAML 丢失 -->
+    <PublishAot>false</PublishAot>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>
 
   <!-- Windows 专用：启用 WinForms，用于内嵌 WebView2 登录窗口 -->
@@ -57,6 +63,8 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.11" Condition="'$(Configuration)' == 'Debug'" />
+    <!-- bezzad/Downloader：成熟的多线程分片下载库（模组 / 资源包文件下载） -->
+    <PackageReference Include="Downloader" Version="5.10.1" />
     <!-- CmlLib.Core：Minecraft 版本列表、下载安装、启动进程构建的核心库 -->
     <PackageReference Include="CmlLib.Core" Version="4.0.6" />
     <PackageReference Include="CmlLib.Core.Auth.Microsoft" Version="3.4.0" />
